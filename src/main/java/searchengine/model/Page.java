@@ -4,19 +4,29 @@ import lombok.Data;
 
 import javax.persistence.*;
 
-import static javax.persistence.GenerationType.AUTO;
+import java.util.List;
 
-@Table(name = "page", indexes = {@Index(columnList = "path", name = "path_index")})
+import static javax.persistence.GenerationType.IDENTITY;
+
+@Table(name = "page",
+        indexes = {@javax.persistence.Index(columnList = "path", name = "path_index")})
 @Entity(name = "page")
 @Data
 public class Page {
 
     @Id
-    @GeneratedValue(strategy = AUTO)
+    @GeneratedValue(
+            strategy = GenerationType.SEQUENCE,
+            generator = "page_sequence"
+    )
+    @SequenceGenerator(
+            name = "page_sequence",
+            allocationSize = 100
+    )
     @Column(name = "id", nullable = false)
     private int id;
 
-    @OneToOne(cascade = CascadeType.ALL, optional = false)
+    @ManyToOne(cascade = CascadeType.ALL, optional = false)
     @JoinColumn(name = "site_id", nullable = false, foreignKey = @ForeignKey(name = "site_id_fk"))
     private Site site;
 
@@ -28,5 +38,11 @@ public class Page {
 
     @Column(name = "content", columnDefinition = "MEDIUMTEXT")
     private String content;
+
+    @OneToMany(mappedBy = "page",
+            fetch = FetchType.LAZY,
+            cascade = javax.persistence.CascadeType.REMOVE,
+            orphanRemoval = true)
+    private List<Index> indexList;
 
 }

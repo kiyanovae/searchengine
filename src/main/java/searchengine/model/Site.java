@@ -5,19 +5,24 @@ import lombok.Data;
 import javax.persistence.*;
 
 import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 
 
-import static javax.persistence.GenerationType.AUTO;
+
+
 
 @Table(name = "site")
 @Entity(name = "site")
 @Data
 public class Site {
     @Id
-    @GeneratedValue(strategy = AUTO)
+    @GeneratedValue(
+            strategy = GenerationType.SEQUENCE,
+            generator = "site_sequence"
+    )
+    @SequenceGenerator(
+            name = "site_sequence"
+    )
     @Column(name = "id", nullable = false)
     private int id;
     @Enumerated(EnumType.STRING)
@@ -36,10 +41,13 @@ public class Site {
     @Column(name = "name", nullable = false, columnDefinition = "VARCHAR(255)")
     private String name;
 
-    @OneToOne (optional=false, mappedBy="site")
-    private Page page;
+    @OneToMany (mappedBy="site", orphanRemoval = true)
+    private List<Page> page;
 
-    @ManyToMany(mappedBy = "sites")
-    private Set<Lemma> lemma = new HashSet<>();
+    @OneToMany(mappedBy = "site", orphanRemoval = true)
+    private List<Lemma> lemma;
+
+
+
 }
 

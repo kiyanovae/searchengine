@@ -22,6 +22,3 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
-
-    # example values
-
