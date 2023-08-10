@@ -14,7 +14,7 @@ import java.util.List;
 @Table(name = "site")
 @Entity(name = "site")
 @Data
-public class Site {
+public class SitePage {
     @Id
     @GeneratedValue(
             strategy = GenerationType.SEQUENCE,
@@ -41,10 +41,10 @@ public class Site {
     @Column(name = "name", nullable = false, columnDefinition = "VARCHAR(255)")
     private String name;
 
-    @OneToMany (mappedBy="site", orphanRemoval = true)
+    @OneToMany (mappedBy="sitePage", orphanRemoval = true)
     private List<Page> page;
 
-    @OneToMany(mappedBy = "site", orphanRemoval = true)
+    @OneToMany(mappedBy = "sitePage", orphanRemoval = true)
     private List<Lemma> lemma;
 
 

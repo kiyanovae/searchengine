@@ -23,6 +23,7 @@ public class IndexingController {
         if (serverConfig.isIndexingAvailable()) {
             return new ErrorResponse(INDEXING_IS_ALREADY_DOING);
         }
+        return new Response();
     }
 
 }

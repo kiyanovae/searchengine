@@ -7,7 +7,6 @@ import javax.persistence.*;
 import java.util.List;
 
 import static javax.persistence.FetchType.EAGER;
-import static javax.persistence.GenerationType.IDENTITY;
 
 @Table(name = "lemma")
 @Entity(name = "lemma")
@@ -28,7 +27,7 @@ public class Lemma {
 
     @ManyToOne(fetch = EAGER, cascade = {CascadeType.ALL})
     @JoinColumn(name = "site_id", foreignKey = @ForeignKey(name = "site_lemma_fk"))
-    private Site site;
+    private SitePage sitePage;
 
     @Column(name = "lemma", nullable = false)
     private String lemma;

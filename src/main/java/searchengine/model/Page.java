@@ -1,17 +1,18 @@
 package searchengine.model;
 
+import com.sun.istack.NotNull;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
 
 import java.util.List;
 
-import static javax.persistence.GenerationType.IDENTITY;
-
 @Table(name = "page",
         indexes = {@javax.persistence.Index(columnList = "path", name = "path_index")})
 @Entity(name = "page")
 @Data
+@NoArgsConstructor
 public class Page {
 
     @Id
@@ -26,9 +27,9 @@ public class Page {
     @Column(name = "id", nullable = false)
     private int id;
 
-    @ManyToOne(cascade = CascadeType.ALL, optional = false)
-    @JoinColumn(name = "site_id", nullable = false, foreignKey = @ForeignKey(name = "site_id_fk"))
-    private Site site;
+    @NotNull
+    @Column(name = "site_id")
+    private int siteId;
 
     @Column(name = "path", columnDefinition = "VARCHAR(255)", nullable = false)
     private String path;
