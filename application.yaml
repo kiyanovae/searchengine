@@ -1,37 +1,49 @@
 server:
   port: 8080
 
+logging:
+  logback:
+    rollingpolicy:
+      clean-history-on-start: true
+  file:
+    path: ./logs
+
 spring:
   datasource:
+    hikari:
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+      maximum-pool-size: 30
+      connection-timeout: 60000
+      auto-commit: false
     username: root
     password: Mysqlpass
-    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true&reWriteBatchedInserts=true
   jpa:
+    open-in-view: false
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
-        format_sql: true
+        format_sql: false
         jdbc:
           batch_size: 1000
         order_inserts: true
-        order_updates: true
-        batch_versioned_data: true
+        generate_statistics: false
+        connection:
+          provider_disables_autocommit: true
     hibernate:
-        ddl-auto: update
+      ddl-auto: update
   output:
     ansi:
       enabled: always
 
 indexing-settings:
   sites:
-    - url: https://www.playback.ru
-      name: PlayBack.Ru
-    - url: https://www.svetlovka.ru
-      name: Svetlovka.Ru
-    - url: https://sites.google.com/view/malayarodina
-      name: Rodina
+    - url: https://skillbox.ru
+      name: Skillbox
+    - url: http://www.playback.ru
+      name: PlayBack.ru
 
 connection-settings:
-  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
   referrer: https://www.google.com

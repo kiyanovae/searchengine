@@ -1,28 +1,23 @@
 package searchengine.services;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;
-import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
+import org.springframework.stereotype.Service;
+import searchengine.config.QueryLemmas;
 
-import java.io.IOException;
 import java.util.*;
 
-public class LemmaFinder {
-    private final LuceneMorphology luceneMorphology;
-    private static final String WORD_TYPE_REGEX = "\\W\\w&&[^а-яА-Я\\s]";
+@Service
+@RequiredArgsConstructor
+public class LemmaFinderServiceImpl implements LemmaFinderService {
     private static final String[] particlesNames = new String[]{"МЕЖД", "ПРЕДЛ", "СОЮЗ", "ЧАСТ"};
+    private final LuceneMorphology luceneMorphology;
 
-    public static LemmaFinder getInstance() throws IOException {
-        LuceneMorphology morphology= new RussianLuceneMorphology();
-        return new LemmaFinder(morphology);
-    }
-
-    private LemmaFinder(LuceneMorphology luceneMorphology) {
-        this.luceneMorphology = luceneMorphology;
-    }
-
-    public HashMap<String, Integer> collectLemmas(String text) {
-        String[] words = textToArrayContainsRussianWords(text);
+    @Override
+    public HashMap<String, Integer> collectLemmas(String html) {
+        String plainText = trimHtmlTags(html);
+        String[] words = textToArrayContainsRussianWords(plainText);
         HashMap<String, Integer> lemmas = new HashMap<>();
         for (String word : words) {
             if (word.isBlank()) {
@@ -42,27 +37,42 @@ public class LemmaFinder {
         return lemmas;
     }
 
-    public Set<String> getLemmaSet(String text) {
+    @Override
+    public QueryLemmas getLemmaSet(String text) {
         String[] words = textToArrayContainsRussianWords(text);
-        Set<String> lemmaSet = new HashSet<>();
+        QueryLemmas queryLemmas = new QueryLemmas();
+        Set<String> nonParticipantLemmaSet = queryLemmas.getNonParticipantSet();
+        Set<String> filteredLemmaSet = queryLemmas.getFilteredSet();
         for (String word : words) {
-            if (!word.isEmpty() && isCorrectWordForm(word)) {
+            if (!word.isBlank()) {
                 List<String> wordBaseForms = luceneMorphology.getMorphInfo(word);
+                List<String> normalForms = luceneMorphology.getNormalForms(word);
                 if (anyWordBaseBelongToParticle(wordBaseForms)) {
+                    nonParticipantLemmaSet.addAll(normalForms);
                     continue;
                 }
-                lemmaSet.addAll(luceneMorphology.getNormalForms(word));
+                filteredLemmaSet.addAll(normalForms);
             }
         }
-        return lemmaSet;
+        return queryLemmas;
     }
 
-    public String stripHtmlTags(String text) {
-        return Jsoup.parse(text).text();
+    @Override
+    public List<String> getLemmaList(String word) {
+        List<String> wordBaseForms = luceneMorphology.getMorphInfo(word);
+        if (anyWordBaseBelongToParticle(wordBaseForms)) {
+            return Collections.emptyList();
+        }
+        return luceneMorphology.getNormalForms(word);
+    }
+
+    private String trimHtmlTags(String html) {
+        return Jsoup.parse(html).text();
     }
 
     private String[] textToArrayContainsRussianWords(String text) {
         return text.toLowerCase(Locale.ROOT)
+                .replace('ё', 'е')
                 .replaceAll("([^а-я\\s])", " ")
                 .trim()
                 .split("\\s+");
@@ -79,15 +89,5 @@ public class LemmaFinder {
             }
         }
         return false;
-    }
-
-    private boolean isCorrectWordForm(String word) {
-        List<String> wordInfo = luceneMorphology.getMorphInfo(word);
-        for (String morphInfo : wordInfo) {
-            if (morphInfo.matches(WORD_TYPE_REGEX)) {
-                return false;
-            }
-        }
-        return true;
     }
 }

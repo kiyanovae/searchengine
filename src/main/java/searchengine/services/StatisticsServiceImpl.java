@@ -21,53 +21,51 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class StatisticsServiceImpl implements StatisticsService {
-
     private final LemmaRepository lemmaRepository;
     private final PageRepository pageRepository;
     private final SitesList sites;
     private final SiteRepository siteRepository;
+    private final StatusService statusService;
 
     @Override
     public StatisticsResponse getStatistics() {
-
         TotalStatistics total = new TotalStatistics();
         total.setSites(0);
-        total.setIndexing(IndexingServiceImpl.getMainIndexingIsRunning());
-
+        total.setIndexing(statusService.isIndexingRunning());
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
-        List<Site> sitesList = sites.getSites();
-        for(Site site : sitesList) {
+        for (Site configurationSite : sites.getSites()) {
             DetailedStatisticsItem item = new DetailedStatisticsItem();
-            item.setName(site.getName());
-            item.setUrl(site.getUrl());
-            Optional<SiteEntity> optionalSiteEntity = siteRepository.findByUrl(site.getUrl().concat("/"));
+            String siteUrl = configurationSite.getUrl();
+            item.setUrl(siteUrl);
+            item.setName(configurationSite.getName());
+            Optional<SiteEntity> optionalSiteEntity = siteRepository.findByUrl(siteUrl);
             if (optionalSiteEntity.isEmpty()) {
                 continue;
             }
-            SiteEntity siteEntity = optionalSiteEntity.get();
+            SiteEntity site = optionalSiteEntity.get();
             total.setSites(total.getSites() + 1);
-            item.setStatus(siteEntity.getStatus().name());
-            item.setStatusTime(siteEntity.getStatusTime().toEpochSecond(ZoneOffset.UTC));
-            String error = siteEntity.getLastError();
+            item.setStatus(site.getStatus().name());
+            item.setStatusTime(site.getStatusTime().toEpochSecond(ZoneOffset.UTC));
+            String error = site.getLastError();
             if (error != null) {
                 item.setError(error);
             }
-            int pages = pageRepository.countBySiteId(siteEntity.getId());
-            int lemmas = lemmaRepository.countBySiteId(siteEntity.getId());
-            item.setPages(pages);
-            item.setLemmas(lemmas);
-            total.setPages(total.getPages() + pages);
-            total.setLemmas(total.getLemmas() + lemmas);
+            int pageCount = pageRepository.countBySite(site);
+            item.setPages(pageCount);
+            total.setPages(total.getPages() + pageCount);
+            int lemmaCount = lemmaRepository.countBySite(site);
+            item.setLemmas(lemmaCount);
+            total.setLemmas(total.getLemmas() + lemmaCount);
             detailed.add(item);
         }
         return createResponse(total, detailed);
     }
 
     private StatisticsResponse createResponse(TotalStatistics total, List<DetailedStatisticsItem> detailed) {
-        StatisticsResponse response = new StatisticsResponse();
         StatisticsData data = new StatisticsData();
         data.setTotal(total);
         data.setDetailed(detailed);
+        StatisticsResponse response = new StatisticsResponse();
         response.setStatistics(data);
         response.setResult(true);
         return response;

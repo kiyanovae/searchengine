@@ -3,21 +3,26 @@ package searchengine.model;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+import org.jsoup.nodes.Document;
 
 import javax.persistence.*;
+import java.util.List;
 
-@Entity
+@Entity(name = "Page")
 @NoArgsConstructor
 @Getter
 @Setter
-@Table(name = "page", indexes = @Index(name = "path_siteId_index", columnList = "path, site_id", unique = true))
+@Table(name = "page", indexes = @Index(name = "idx_path", columnList = "path"))
 public class PageEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false)
     private int id;
 
-    @ManyToOne(cascade = CascadeType.MERGE, fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     @JoinColumn(name = "site_id", nullable = false)
     private SiteEntity site;
 
@@ -30,10 +35,19 @@ public class PageEntity {
     @Column(name = "content", columnDefinition = "MEDIUMTEXT", nullable = false)
     private String content;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "`index`", joinColumns = {@JoinColumn(name = "page_id")}, inverseJoinColumns = {@JoinColumn(name = "lemma_id")})
+    private List<LemmaEntity> lemmas;
+
+    @Transient
+    private Document document;
+
     public PageEntity(SiteEntity site, String path, int code, String content) {
         this.site = site;
         this.path = path;
         this.code = code;
         this.content = content;
     }
+
+
 }

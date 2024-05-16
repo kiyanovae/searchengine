@@ -1,12 +1,13 @@
 package searchengine.dto;
 
-import lombok.*;
+import lombok.Getter;
 
 @Getter
-public class UnsuccessfulResponse extends SuccessfulResponse {
+public class UnsuccessfulResponse {
+    private final boolean result = false;
     private final String error;
-    public UnsuccessfulResponse(boolean result, String error) {
-        super(result);
+
+    public UnsuccessfulResponse(String error) {
         this.error = error;
     }
 }

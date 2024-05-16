@@ -1,211 +1,220 @@
 package searchengine.services;
 
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
+import org.springframework.beans.factory.annotation.Lookup;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import searchengine.config.ConnectionSettings;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.dto.SuccessfulResponse;
-import searchengine.exceptions.RequestException;
-import searchengine.model.*;
+import searchengine.exceptions.BadRequestException;
+import searchengine.exceptions.ConflictRequestException;
+import searchengine.exceptions.InternalServerException;
+import searchengine.model.SiteEntity;
 import searchengine.repositories.SiteRepository;
 
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Optional;
+import java.util.concurrent.ForkJoinPool;
 
 @Slf4j
+@RequiredArgsConstructor
 @Service
+@ConfigurationProperties(prefix = "connection-settings")
 public class IndexingServiceImpl implements IndexingService {
-    private static volatile boolean subIndexingIsRunning;
-    private static volatile boolean mainIndexingIsRunning;
-    private static volatile boolean isStoppedByUser;
+    private static final int SLEEP_DURATION = 1000;
+    private static final int TIMEOUT_MILLISECONDS = 60000;
     private final SiteRepository siteRepository;
     private final SitesList sites;
-    private final ConnectionSettings connectionSettings;
     private final PageIndexerService pageIndexerService;
-    private final ForkJoinPool pool;
-    private Thread indexingThread;
+    private final StatusService statusService;
+    private final SaverService saverService;
+    private final ForkJoinPool pool = ForkJoinPool.commonPool();
+    ArrayList<PageHandlerService> taskList = new ArrayList<>();
+    private Thread observerThread;
+    private Thread indexThread;
+    @Setter
+    private String userAgent;
+    @Setter
+    private String referrer;
 
-    public IndexingServiceImpl(SiteRepository siteRepository, SitesList sites, ConnectionSettings connectionSettings, PageIndexerService pageIndexerService) {
-        this.siteRepository = siteRepository;
-        this.sites = sites;
-        this.connectionSettings = connectionSettings;
-        this.pageIndexerService = pageIndexerService;
-        pool = new ForkJoinPool();
-        mainIndexingIsRunning = false;
-        indexingThread = null;
-    }
-
-    public static boolean getMainIndexingIsRunning() {
-        return mainIndexingIsRunning;
-    }
-
-    public static boolean getIsStoppedByUser() {
-        return isStoppedByUser;
-    }
-
-    public static void setSubIndexingIsRunning(boolean subIndexingIsRunning) {
-        IndexingServiceImpl.subIndexingIsRunning = subIndexingIsRunning;
-    }
-
-    @Transactional
     @Override
     public SuccessfulResponse startIndexing() {
-        check(1);
-        List<UrlFinder> taskList = createTasks();
-        log.info("Indexing has begun");
-        taskList.forEach(pool::execute);
-        indexingThread = new Thread(() -> indexingAllSites(taskList));
-        indexingThread.start();
-        return new SuccessfulResponse(true);
+        synchronized (statusService) {
+            if (statusService.isIndexingRunning()) {
+                throw new ConflictRequestException("Indexing has already started");
+            }
+            statusService.setAdditionalTasksStoppedByIndexing(true);
+            while (statusService.getAdditionalTaskCount() != 0) {
+                sleep();
+            }
+            statusService.setAdditionalTasksStoppedByIndexing(false);
+            statusService.setIndexingRunning(true);
+            statusService.setIndexingStoppedByUser(false);
+            indexThread = new Thread(this::index);
+            log.info("Indexing has been started");
+            indexThread.start();
+            return new SuccessfulResponse();
+        }
     }
 
     @Override
     public SuccessfulResponse stopIndexing() {
-        check(2);
-        isStoppedByUser = true;
-        while (indexingThread.isAlive()) {
+        synchronized (statusService) {
+            if (!statusService.isIndexingRunning()) {
+                throw new ConflictRequestException("Indexing is not running");
+            }
+            if (statusService.isIndexingStoppedByUser()) {
+                throw new ConflictRequestException("Indexing already in the process of stopping");
+            }
+            statusService.setIndexingStoppedByUser(true);
         }
-        log.info("Индексация остановлена");
-        return new SuccessfulResponse(true);
+        log.info("Started the process of stopping indexing");
+        indexThread.interrupt();
+        if (observerThread != null) {
+            try {
+                observerThread.join();
+            } catch (InterruptedException e) {
+                throw new InternalServerException(e.getMessage(), e);
+            }
+        }
+        log.info("Indexing has been stopped");
+        SuccessfulResponse response = new SuccessfulResponse();
+        synchronized (statusService) {
+            statusService.setIndexingRunning(false);
+            statusService.setIndexingStoppedByUser(false);
+            return response;
+        }
     }
 
     @Override
-    public SuccessfulResponse indexPage(String url) {
-        Site site = getSite(url);
-        if (site == null) {
-            throw new RequestException("Данная страница находится за пределами сайтов указанных в конфигурационном файле");
-        }
-        check(3);
+    public SuccessfulResponse individualPage(String url) {
+        statusService.incrementAdditionalTaskCount();
         try {
-            Connection.Response response = Jsoup.connect(url).userAgent(connectionSettings.getUserAgent()).referrer(connectionSettings.getReferrer()).ignoreHttpErrors(true).execute();
-            Document document = response.parse();
-            SiteEntity siteEntity = getSiteEntity(site);
-            new Thread(() -> {
-                try {
-                    pageIndexerService.indexPage(siteEntity, url.substring(site.getUrl().length()), response.statusCode(), document.outerHtml());
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }).start();
+            Site configurationSite = findConfigurationSite(url).orElseThrow(() -> new BadRequestException("The '" + url + "' page is outside the sites specified in the configuration file"));
+            Connection.Response response = Jsoup.connect(url).userAgent(userAgent).referrer(referrer).ignoreHttpErrors(true).timeout(TIMEOUT_MILLISECONDS).execute();
+            SiteEntity site = getSite(configurationSite);
+            if (!site.getStatus().equals(SiteEntity.SiteStatus.INDEXED)) {
+                throw new ConflictRequestException("The site must have an indexed status");
+            }
+            int statusCode = response.statusCode();
+            String content = response.parse().outerHtml();
+            String path = response.url().getPath();
+            pool.execute(() -> pageIndexerService.handle(site, path, statusCode, content));
+            log.info("{} has been added to the queue", url);
+            return new SuccessfulResponse();
+        } catch (IllegalArgumentException e) {
+            statusService.decrementAdditionalTaskCount();
+            throw new BadRequestException(e.getMessage());
         } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        return new SuccessfulResponse(true);
-    }
-
-    private synchronized void check(int code) {
-        switch (code) {
-            case 1 -> {
-                if (subIndexingIsRunning) {
-                    throw new RequestException("Запущена индексация отдельной страницы.");
-                }
-                if (mainIndexingIsRunning) {
-                    throw new RequestException("Индексация уже запущена.");
-                }
-                mainIndexingIsRunning = true;
-                isStoppedByUser = false;
-            }
-            case 2 -> {
-                if (!mainIndexingIsRunning) {
-                    throw new RequestException("Индексация остановлена/останавливается.");
-                }
-                mainIndexingIsRunning = false;
-            }
-            case 3-> {
-                if (mainIndexingIsRunning) {
-                    throw new RequestException("Запущена основная индексация.");
-                }
-                subIndexingIsRunning = true;
-                isStoppedByUser = false;
-                PageIndexerServiceImpl.getQueuedTaskCount().incrementAndGet();
-            }
+            statusService.decrementAdditionalTaskCount();
+            throw new BadRequestException(url + " - " + e.getMessage());
         }
     }
 
-    private List<UrlFinder> createTasks() {
-        List<UrlFinder> taskList = new ArrayList<>();
-        UrlFinder.setUserAgent(connectionSettings.getUserAgent());
-        UrlFinder.setReferrer(connectionSettings.getReferrer());
-        for (Site site : sites.getSites()) {
-            String siteUrl = site.getUrl().concat("/");
-            deleteSiteFromDataBase(siteUrl);
-            int siteId = createSiteAndGetId(siteUrl, site.getName());
-            log.info("Task ".concat(siteUrl).concat(" created"));
-            UrlFinder task = new UrlFinder(pageIndexerService, siteId, siteUrl, siteUrl);
+    private void index() {
+        taskList.clear();
+        taskList.trimToSize();
+        createAndExecuteTasks();
+        observerThread = new Thread(this::awaitIndexingTermination);
+        observerThread.start();
+    }
+
+    private void createAndExecuteTasks() {
+        for (Site confSite : sites.getSites()) {
+            String siteUrl = confSite.getUrl();
+            String siteName = confSite.getName();
+            SiteEntity site = saverService.cleanUpAndSaveSite(siteUrl, siteName);
+            PageHandlerService task = getPageHandlerService();
+            task.setSite(site);
+            String baseUri = siteUrl.concat("/");
+            task.setUrl(baseUri);
+            task.setBaseUri(baseUri);
             taskList.add(task);
+            statusService.incrementTaskCount();
+            pool.execute(task);
+            log.info("The {} site has been started indexing", siteUrl);
         }
-        return taskList;
     }
 
-    private void deleteSiteFromDataBase(String siteUrl) {
-        Optional<SiteEntity> optSiteEntity = siteRepository.findByUrl(siteUrl);
-        optSiteEntity.ifPresent(siteEntity -> siteRepository.deleteById(siteEntity.getId()));
+    @Lookup
+    public PageHandlerService getPageHandlerService() {
+        return null;
     }
 
-    private int createSiteAndGetId(String siteUrl, String siteName) {
-        SiteEntity siteEntity = siteRepository.save(new SiteEntity(SiteStatus.INDEXING, siteUrl, siteName));
-        return siteEntity.getId();
-    }
-
-    private void indexingAllSites(List<UrlFinder> taskList) {
+    private void awaitIndexingTermination() {
         while (!taskList.isEmpty()) {
-            Iterator<UrlFinder> taskIterator = taskList.iterator();
+            sleep();
+            Iterator<PageHandlerService> taskIterator = taskList.iterator();
             while (taskIterator.hasNext()) {
-                UrlFinder task = taskIterator.next();
+                PageHandlerService task = taskIterator.next();
                 if (task.isDone()) {
-                    updateSiteInfo(task.getException(), task);
-                    if (task.getException() != null) {
-                        log.warn(task.getException().getMessage());
-                        /*throw new RuntimeException(task.getException());*/
+                    SiteEntity site = task.getSite();
+                    if (task.isCompletedNormally()) {
+                        site.setStatus(SiteEntity.SiteStatus.INDEXED);
+                    } else {
+                        String errorMessage = task.getException().getMessage();
+                        site.setStatus(SiteEntity.SiteStatus.FAILED);
+                        site.setLastError(errorMessage);
+                        log.info("Indexing of {} finished with an error: {}", site.getUrl(), errorMessage);
                     }
-                    log.warn(task.getMainUrl() + " Done!");
+                    site.setStatusTime(LocalDateTime.now());
+                    siteRepository.save(site);
+                    log.info("The {} site has been indexed", site.getUrl());
                     taskIterator.remove();
                 }
             }
         }
-        /*pageIndexerService.flushLemmaIndex();*/
-        //pageIndexerService.flushIndexEntities();
-        mainIndexingIsRunning = false;
-    }
-
-    private void updateSiteInfo(Throwable taskException, UrlFinder task) {
-        Optional<SiteEntity> optSiteEntity = siteRepository.findByUrl(task.getMainUrl());
-        if (taskException == null) {
-            optSiteEntity.ifPresent(site -> {
-                site.setStatus(SiteStatus.INDEXED);
-                siteRepository.save(site);
-            });
-        } else {
-            optSiteEntity.ifPresent(site -> {
-                site.setStatus(SiteStatus.FAILED);
-                site.setLastError(taskException.getMessage());
-                siteRepository.save(site);
-            });
-        }
-    }
-
-    private Site getSite(String url) {
-        List<Site> siteList = sites.getSites();
-        for (Site site : siteList) {
-            if (url.startsWith(site.getUrl())) {
-                return site;
+        if (!statusService.isIndexingStoppedByUser()) {
+            log.info("Indexing has been finished");
+            synchronized (statusService) {
+                statusService.setIndexingRunning(false);
+                return;
             }
         }
-        return null;
+        while (statusService.getTaskCount() != 0) {
+            log.info("{} tasks in the progress", statusService.getTaskCount());
+            sleep();
+        }
+        while (statusService.getAdditionalTaskCount() != 0) {
+            log.info("{} additional tasks in the progress", statusService.getTaskCount());
+            sleep();
+        }
     }
 
-    private SiteEntity getSiteEntity(Site site) {
-        String siteUrl = site.getUrl().concat("/");
-        String siteName = site.getName();
-        synchronized (siteRepository) {
-            Optional<SiteEntity> optionalSiteEntity = siteRepository.findByUrl(siteUrl);
-            return optionalSiteEntity.orElseGet(() -> siteRepository.save(new SiteEntity(SiteStatus.INDEXING, siteUrl, siteName)));
+    private Optional<Site> findConfigurationSite(String url) {
+        for (Site site : sites.getSites()) {
+            if (url.startsWith(site.getUrl())) {
+                return Optional.of(site);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private SiteEntity getSite(Site site) {
+        String url = site.getUrl();
+        String name = site.getName();
+        Optional<SiteEntity> optionalSite = siteRepository.findByUrl(url);
+        if (optionalSite.isPresent()) {
+            return optionalSite.get();
+        }
+        synchronized (this) {
+            return siteRepository.findByUrl(url).orElseGet(() -> saverService.saveSiteWithIndexedStatus(url, name));
+        }
+    }
+
+    private void sleep() {
+        try {
+            Thread.sleep(SLEEP_DURATION);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 }

@@ -6,15 +6,15 @@ import lombok.Setter;
 
 import javax.persistence.*;
 
-@Entity
+@Entity(name = "Index")
 @NoArgsConstructor
 @Getter
 @Setter
 @Table(name = "`index`")
 public class IndexEntity {
+    @TableGenerator(name = "index_generator", table = "table_identifier", allocationSize = 1000)
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO, generator = "index_generator")
-    @TableGenerator(name = "index_generator", table = "table_identifier", pkColumnName = "table_name", allocationSize = 1000)
+    @GeneratedValue(strategy = GenerationType.TABLE, generator = "index_generator")
     @Column(name = "id", nullable = false)
     private int id;
 
@@ -25,14 +25,9 @@ public class IndexEntity {
     private int lemmaId;
 
     @Column(name = "`rank`", nullable = false)
-    private float rank;
+    private int rank;
 
-    public IndexEntity(int pageId, float rank) {
-        this.pageId = pageId;
-        this.rank = rank;
-    }
-
-    public IndexEntity(int pageId, int lemmaId, float rank) {
+    public IndexEntity(int pageId, int lemmaId, int rank) {
         this.pageId = pageId;
         this.lemmaId = lemmaId;
         this.rank = rank;
