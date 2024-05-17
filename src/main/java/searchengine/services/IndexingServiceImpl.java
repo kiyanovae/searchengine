@@ -104,10 +104,7 @@ public class IndexingServiceImpl implements IndexingService {
             if (!site.getStatus().equals(SiteEntity.SiteStatus.INDEXED)) {
                 throw new ConflictRequestException("The site must have an indexed status");
             }
-            int statusCode = response.statusCode();
-            String content = response.parse().outerHtml();
-            String path = response.url().getPath();
-            pool.execute(() -> pageIndexerService.handle(site, path, statusCode, content));
+            pool.execute(() -> pageIndexerService.handle(site, response));
             log.info("{} has been added to the queue", url);
             return new SuccessfulResponse();
         } catch (IllegalArgumentException e) {

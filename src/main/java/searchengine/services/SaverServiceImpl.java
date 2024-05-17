@@ -2,7 +2,6 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
-import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,7 +12,6 @@ import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 
 @Service
@@ -38,13 +36,12 @@ public class SaverServiceImpl implements SaverService {
 
     @Transactional
     @Override
-    public PageEntity savePage(SiteEntity site, String path, Connection.Response response) throws IOException {
+    public PageEntity savePage(SiteEntity site, Connection.Response response) {
+        String path = response.url().getPath();
         if (pageRepository.existsByPathAndSite(path, site)) {
             return null;
         }
-        Document document = response.parse();
-        PageEntity page = pageRepository.save(new PageEntity(site, path, response.statusCode(), document.outerHtml()));
-        page.setDocument(document);
+        PageEntity page = pageRepository.save(new PageEntity(site, path, response.statusCode(), response.body()));
         site.setStatusTime(LocalDateTime.now());
         siteRepository.save(site);
         return page;
@@ -63,6 +60,5 @@ public class SaverServiceImpl implements SaverService {
     @Override
     public LemmaEntity saveLemma(String lemma, SiteEntity site) {
         return lemmaRepository.save(new LemmaEntity(site, lemma, 1));
-
     }
 }

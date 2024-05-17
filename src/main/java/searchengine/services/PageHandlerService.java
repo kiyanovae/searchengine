@@ -66,10 +66,9 @@ public class PageHandlerService extends RecursiveAction {
                     .ignoreHttpErrors(true)
                     .timeout(TIMEOUT_MILLISECONDS)
                     .execute();
-            String path = response.url().getPath();
             PageEntity page;
             synchronized (saverService) {
-                page = saverService.savePage(site, path, response);
+                page = saverService.savePage(site, response);
             }
             if (page == null) {
                 return;
@@ -78,7 +77,7 @@ public class PageHandlerService extends RecursiveAction {
                 return;
             }
             pageIndexerService.index(site, page);
-            List<PageHandlerService> newTasks = parseHtml(page.getDocument());
+            List<PageHandlerService> newTasks = parseHtml(response.parse());
             log.info(url + " has been indexed");
             newTasks.forEach(ForkJoinTask::join);
         } catch (UnsupportedMimeTypeException ignored) {

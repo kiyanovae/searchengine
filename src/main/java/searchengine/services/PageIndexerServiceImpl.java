@@ -2,6 +2,7 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Connection;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.IndexEntity;
@@ -34,18 +35,21 @@ public class PageIndexerServiceImpl implements PageIndexerService {
 
     @Transactional
     @Override
-    public void handle(SiteEntity site, String path, int code, String content) {
+    public void handle(SiteEntity site, Connection.Response response) {
         if (statusService.isIndexingStoppedByUser() || statusService.isAdditionalTasksStoppedByIndexing()) {
             statusService.decrementAdditionalTaskCount();
             return;
         }
+        String path = response.url().getPath();
+        int code = response.statusCode();
+        String content = response.body();
         if (!pageRepository.existsByPathAndSite(path, site)) {
             boolean isNewPage;
             synchronized (this) {
                 isNewPage = saverService.savePage(site, path, code, content);
             }
             if (isNewPage) {
-                indexPageWithLock(site, path , code);
+                indexPageWithLock(site, path, code);
             } else {
                 updateAndIndexPageWithLock(site, path, code, content);
             }
