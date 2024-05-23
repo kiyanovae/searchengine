@@ -12,7 +12,7 @@ public interface SaverService {
 
     PageEntity savePage(SiteEntity site, Connection.Response response);
 
-    boolean savePage(SiteEntity site, String path, int code, String content);
+    PageEntity savePage(SiteEntity site, String path, int code, String content);
 
     LemmaEntity saveLemma(String lemma, SiteEntity site);
 }

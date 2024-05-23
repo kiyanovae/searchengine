@@ -56,22 +56,16 @@ public class PageSearcherServiceImpl implements PageSearcherService {
     }
 
     private List<Page> getSitePageList(List<Integer> pageIds, List<LemmaEntity> filteredLemmas) {
-        long maxRelevance = Long.MIN_VALUE;
-        List<Page> pageList = new ArrayList<>();
-        for (int pageId : pageIds) {
-            long absoluteRelevance = calculateAbsoluteRelevance(pageId, filteredLemmas);
-            if (absoluteRelevance > maxRelevance) {
-                maxRelevance = absoluteRelevance;
-            }
-            pageList.add(new Page(pageId, absoluteRelevance));
-        }
+        List<Page> pageList = calculateAbsoluteRelevancePages(pageIds, filteredLemmas);
+
+        double maxRelevance = pageList.stream().mapToDouble(Page::getRelevance).max().orElse(1.0);
         for (Page page : pageList) {
             page.setRelevance(page.getRelevance() / maxRelevance);
         }
         return pageList;
     }
 
-    private long calculateAbsoluteRelevance(int pageId, List<LemmaEntity> filteredLemmas) {
-        return indexRepository.getRankSumByPageIdAndLemmaIds(pageId, filteredLemmas.stream().map(LemmaEntity::getId).toList());
+    private List<Page> calculateAbsoluteRelevancePages(List<Integer> pageIds, List<LemmaEntity> filteredLemmas) {
+        return indexRepository.getRankSumByPageIdsAndLemmaIds(pageIds, filteredLemmas.stream().map(LemmaEntity::getId).toList());
     }
 }

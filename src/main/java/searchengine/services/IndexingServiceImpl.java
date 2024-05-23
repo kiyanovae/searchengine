@@ -14,6 +14,7 @@ import searchengine.dto.SuccessfulResponse;
 import searchengine.exceptions.BadRequestException;
 import searchengine.exceptions.ConflictRequestException;
 import searchengine.exceptions.InternalServerException;
+import searchengine.exceptions.StoppedByUserException;
 import searchengine.model.SiteEntity;
 import searchengine.repositories.SiteRepository;
 
@@ -21,6 +22,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ForkJoinPool;
 
@@ -36,10 +38,8 @@ public class IndexingServiceImpl implements IndexingService {
     private final PageIndexerService pageIndexerService;
     private final StatusService statusService;
     private final SaverService saverService;
-    private final ForkJoinPool pool = ForkJoinPool.commonPool();
-    ArrayList<PageHandlerService> taskList = new ArrayList<>();
-    private Thread observerThread;
-    private Thread indexThread;
+    private final ForkJoinPool pool = new ForkJoinPool();
+    private Thread indexingThread;
     @Setter
     private String userAgent;
     @Setter
@@ -58,9 +58,9 @@ public class IndexingServiceImpl implements IndexingService {
             statusService.setAdditionalTasksStoppedByIndexing(false);
             statusService.setIndexingRunning(true);
             statusService.setIndexingStoppedByUser(false);
-            indexThread = new Thread(this::index);
+            indexingThread = new Thread(this::indexing);
             log.info("Indexing has been started");
-            indexThread.start();
+            indexingThread.start();
             return new SuccessfulResponse();
         }
     }
@@ -77,13 +77,10 @@ public class IndexingServiceImpl implements IndexingService {
             statusService.setIndexingStoppedByUser(true);
         }
         log.info("Started the process of stopping indexing");
-        indexThread.interrupt();
-        if (observerThread != null) {
-            try {
-                observerThread.join();
-            } catch (InterruptedException e) {
-                throw new InternalServerException(e.getMessage(), e);
-            }
+        try {
+            indexingThread.join();
+        } catch (InterruptedException e) {
+            throw new InternalServerException("Server error");
         }
         log.info("Indexing has been stopped");
         SuccessfulResponse response = new SuccessfulResponse();
@@ -104,8 +101,17 @@ public class IndexingServiceImpl implements IndexingService {
             if (!site.getStatus().equals(SiteEntity.SiteStatus.INDEXED)) {
                 throw new ConflictRequestException("The site must have an indexed status");
             }
-            pool.execute(() -> pageIndexerService.handle(site, response));
-            log.info("{} has been added to the queue", url);
+            String content = response.body();
+            String urlPath = response.url().getPath();
+            String path;
+            if (urlPath.isEmpty()) {
+                path = "/";
+            } else {
+                path = urlPath;
+            }
+            int code = response.statusCode();
+            pool.execute(() -> pageIndexerService.handle(url, site, path, code, content));
+            log.info("Page '{}' added to the queue", url);
             return new SuccessfulResponse();
         } catch (IllegalArgumentException e) {
             statusService.decrementAdditionalTaskCount();
@@ -116,29 +122,33 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private void index() {
-        taskList.clear();
-        taskList.trimToSize();
-        createAndExecuteTasks();
-        observerThread = new Thread(this::awaitIndexingTermination);
-        observerThread.start();
-    }
-
-    private void createAndExecuteTasks() {
+    private void indexing() {
+        List<PageHandlerService> tasks = new ArrayList<>();
         for (Site confSite : sites.getSites()) {
+            if (statusService.isIndexingStoppedByUser()) {
+                return;
+            }
             String siteUrl = confSite.getUrl();
             String siteName = confSite.getName();
-            SiteEntity site = saverService.cleanUpAndSaveSite(siteUrl, siteName);
+            SiteEntity site;
+            try {
+                site = saverService.cleanUpAndSaveSite(siteUrl, siteName);
+            } catch (StoppedByUserException e) {
+                return;
+            }
             PageHandlerService task = getPageHandlerService();
             task.setSite(site);
             String baseUri = siteUrl.concat("/");
             task.setUrl(baseUri);
             task.setBaseUri(baseUri);
-            taskList.add(task);
+            tasks.add(task);
             statusService.incrementTaskCount();
-            pool.execute(task);
-            log.info("The {} site has been started indexing", siteUrl);
         }
+        tasks.forEach(task -> {
+            pool.execute(task);
+            log.info("Indexing has been started for '{}' site", task.getSite().getUrl());
+        });
+        awaitIndexingTermination(tasks);
     }
 
     @Lookup
@@ -146,25 +156,25 @@ public class IndexingServiceImpl implements IndexingService {
         return null;
     }
 
-    private void awaitIndexingTermination() {
-        while (!taskList.isEmpty()) {
+    private void awaitIndexingTermination(List<PageHandlerService> tasks) {
+        while (!tasks.isEmpty()) {
             sleep();
-            Iterator<PageHandlerService> taskIterator = taskList.iterator();
+            Iterator<PageHandlerService> taskIterator = tasks.iterator();
             while (taskIterator.hasNext()) {
                 PageHandlerService task = taskIterator.next();
                 if (task.isDone()) {
                     SiteEntity site = task.getSite();
                     if (task.isCompletedNormally()) {
                         site.setStatus(SiteEntity.SiteStatus.INDEXED);
+                        log.info("The '{}' site has been indexed", site.getUrl());
                     } else {
                         String errorMessage = task.getException().getMessage();
                         site.setStatus(SiteEntity.SiteStatus.FAILED);
                         site.setLastError(errorMessage);
-                        log.info("Indexing of {} finished with an error: {}", site.getUrl(), errorMessage);
+                        log.info("Indexing of '{}' site finished with an error: {}", site.getUrl(), errorMessage);
                     }
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.save(site);
-                    log.info("The {} site has been indexed", site.getUrl());
                     taskIterator.remove();
                 }
             }
@@ -177,11 +187,11 @@ public class IndexingServiceImpl implements IndexingService {
             }
         }
         while (statusService.getTaskCount() != 0) {
-            log.info("{} tasks in the progress", statusService.getTaskCount());
+            log.info("{} pages in the progress", statusService.getTaskCount());
             sleep();
         }
         while (statusService.getAdditionalTaskCount() != 0) {
-            log.info("{} additional tasks in the progress", statusService.getTaskCount());
+            log.info("{} additional pages in the progress", statusService.getTaskCount());
             sleep();
         }
     }
@@ -211,7 +221,11 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             Thread.sleep(SLEEP_DURATION);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            pool.shutdownNow();
+            while (!pool.isShutdown()) {
+            }
+            statusService.seDefault();
+            throw new InternalServerException("Server error");
         }
     }
 }

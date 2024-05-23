@@ -5,7 +5,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
-import org.jsoup.nodes.Document;
 
 import javax.persistence.*;
 import java.util.List;
@@ -39,15 +38,10 @@ public class PageEntity {
     @JoinTable(name = "`index`", joinColumns = {@JoinColumn(name = "page_id")}, inverseJoinColumns = {@JoinColumn(name = "lemma_id")})
     private List<LemmaEntity> lemmas;
 
-    @Transient
-    private Document document;
-
     public PageEntity(SiteEntity site, String path, int code, String content) {
         this.site = site;
         this.path = path;
         this.code = code;
         this.content = content;
     }
-
-
 }

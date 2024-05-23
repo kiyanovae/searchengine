@@ -8,7 +8,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import javax.persistence.*;
 import java.time.LocalDateTime;
 
-@Entity
+@Entity(name = "Site")
 @NoArgsConstructor
 @Getter
 @Setter

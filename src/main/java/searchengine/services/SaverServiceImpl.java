@@ -5,6 +5,7 @@ import org.jsoup.Connection;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import searchengine.exceptions.StoppedByUserException;
 import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
@@ -21,11 +22,15 @@ public class SaverServiceImpl implements SaverService {
     private final PageRepository pageRepository;
     private final LemmaRepository lemmaRepository;
     private final UpdaterService updaterService;
+    private final StatusService statusService;
 
     @Transactional
     @Override
     public SiteEntity cleanUpAndSaveSite(String url, String name) {
         updaterService.cleanSite(url);
+        if (statusService.isIndexingStoppedByUser()) {
+            throw new StoppedByUserException("");
+        }
         return siteRepository.save(new SiteEntity(SiteEntity.SiteStatus.INDEXING, url, name));
     }
 
@@ -34,7 +39,7 @@ public class SaverServiceImpl implements SaverService {
         return siteRepository.save(new SiteEntity(SiteEntity.SiteStatus.INDEXED, url, name));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public PageEntity savePage(SiteEntity site, Connection.Response response) {
         String path = response.url().getPath();
@@ -47,13 +52,16 @@ public class SaverServiceImpl implements SaverService {
         return page;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
-    public boolean savePage(SiteEntity site, String path, int code, String content) {
+    public PageEntity savePage(SiteEntity site, String path, int code, String content) {
         if (pageRepository.existsByPathAndSite(path, site)) {
-            return false;
+            return null;
         }
-        pageRepository.save(new PageEntity(site, path, code, content));
-        return true;
+        PageEntity page = pageRepository.save(new PageEntity(site, path, code, content));
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.save(site);
+        return page;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

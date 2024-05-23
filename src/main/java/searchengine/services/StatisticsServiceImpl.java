@@ -16,6 +16,7 @@ import searchengine.repositories.SiteRepository;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -45,11 +46,9 @@ public class StatisticsServiceImpl implements StatisticsService {
             SiteEntity site = optionalSiteEntity.get();
             total.setSites(total.getSites() + 1);
             item.setStatus(site.getStatus().name());
-            item.setStatusTime(site.getStatusTime().toEpochSecond(ZoneOffset.UTC));
+            item.setStatusTime(site.getStatusTime().toEpochSecond(ZoneOffset.UTC) * 1000);
             String error = site.getLastError();
-            if (error != null) {
-                item.setError(error);
-            }
+            item.setError(Objects.requireNonNullElse(error, ""));
             int pageCount = pageRepository.countBySite(site);
             item.setPages(pageCount);
             total.setPages(total.getPages() + pageCount);
