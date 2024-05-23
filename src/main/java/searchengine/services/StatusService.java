@@ -24,4 +24,6 @@ public interface StatusService {
     void decrementTaskCount();
 
     int getTaskCount();
+
+    void seDefault();
 }

@@ -79,4 +79,13 @@ public class StatusServiceImpl implements StatusService {
     public int getTaskCount() {
         return taskCount.get();
     }
+
+    @Override
+    public void seDefault() {
+        isIndexingRunning = false;
+        isIndexingStoppedByUser = false;
+        isAdditionalTasksStoppedByIndexing = false;
+        additionalTaskCount.set(0);
+        taskCount.set(0);
+    }
 }

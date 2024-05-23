@@ -78,14 +78,14 @@ public class PageHandlerService extends RecursiveAction {
             }
             pageIndexerService.index(site, page);
             List<PageHandlerService> newTasks = parseHtml(response.parse());
-            log.info(url + " has been indexed");
+            log.info("{} indexed", url);
             newTasks.forEach(ForkJoinTask::join);
         } catch (UnsupportedMimeTypeException ignored) {
         } catch (InterruptedException e) {
-            throw new RuntimeException("Indexing Error: " + url + " - " + e.getMessage());
+            throw new RuntimeException("Indexing error '" + url + "' - " + e.getMessage());
         } catch (IOException e) {
             if (repeatCount == MAX_REPEAT) {
-                throw new RuntimeException("Indexing Error: " + url + " - " + e.getMessage());
+                throw new RuntimeException("Indexing error '" + url + "' - " + e.getMessage());
             } else {
                 PageHandlerService task = createTask(url);
                 task.setRepeatCount(repeatCount + 1);

@@ -2,9 +2,7 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.Connection;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.IndexEntity;
 import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
@@ -33,33 +31,29 @@ public class PageIndexerServiceImpl implements PageIndexerService {
     private final SaverService saverService;
     private final LemmaService lemmaService;
 
-    @Transactional
     @Override
-    public void handle(SiteEntity site, Connection.Response response) {
+    public void handle(String url, SiteEntity site, String path, int code, String content) {
         if (statusService.isIndexingStoppedByUser() || statusService.isAdditionalTasksStoppedByIndexing()) {
             statusService.decrementAdditionalTaskCount();
             return;
         }
-        String path = response.url().getPath();
-        int code = response.statusCode();
-        String content = response.body();
         if (!pageRepository.existsByPathAndSite(path, site)) {
-            boolean isNewPage;
+            PageEntity page;
             synchronized (this) {
-                isNewPage = saverService.savePage(site, path, code, content);
+                page = saverService.savePage(site, path, code, content);
             }
-            if (isNewPage) {
-                indexPageWithLock(site, path, code);
+            if (page != null) {
+                indexPage(site, page);
             } else {
-                updateAndIndexPageWithLock(site, path, code, content);
+                updateAndIndexPage(site, path, code, content);
             }
         } else {
-            updateAndIndexPageWithLock(site, path, code, content);
+            updateAndIndexPage(site, path, code, content);
         }
         site.setStatusTime(LocalDateTime.now());
         siteRepository.save(site);
         statusService.decrementAdditionalTaskCount();
-        log.info(site.getUrl() + path + " has been indexed");
+        log.info("{}  indexed", url);
     }
 
     @Override
@@ -78,29 +72,18 @@ public class PageIndexerServiceImpl implements PageIndexerService {
         siteRepository.save(site);
     }
 
-    void updateAndIndexPageWithLock(SiteEntity site, String path, int code, String content) {
-        pageRepository.findForUpdateByPathAndSite(path, site).ifPresent(page -> {
-            page.setCode(code);
-            page.setContent(content);
-            deletePageFromOtherTables(page);
-            pageRepository.save(page);
-            if (code < MAX_STATUS_CODE) {
-                this.index(site, page);
-            }
-        });
+    private void indexPage(SiteEntity site, PageEntity page) {
+        if (page.getCode() < MAX_STATUS_CODE) {
+            this.index(site, page);
+        }
     }
 
-    void indexPageWithLock(SiteEntity site, String path, int code) {
-        pageRepository.findForUpdateByPathAndSite(path, site).ifPresent(page -> {
-            if (code < MAX_STATUS_CODE) {
-                this.index(site, page);
+    private void updateAndIndexPage(SiteEntity site, String path, int code, String content) {
+        synchronized (this) {
+            PageEntity page = updaterService.cleanAndUpdatePage(site, path, code, content);
+            if (page != null) {
+                indexPage(site, page);
             }
-        });
-    }
-
-    private void deletePageFromOtherTables(PageEntity page) {
-        List<Integer> lemmaIdsByPageId = indexRepository.findLemmaIdsByPageId(page.getId());
-        updaterService.deleteIndexesContainsPage(page);
-        lemmaIdsByPageId.forEach(updaterService::updateLemma);
+        }
     }
 }
