@@ -31,7 +31,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     @Override
     public StatisticsResponse getStatistics() {
         TotalStatistics total = new TotalStatistics();
-        total.setSites(0);
+        total.setSites(sites.getSites().size());
         total.setIndexing(statusService.isIndexingRunning());
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
         for (Site configurationSite : sites.getSites()) {
@@ -44,7 +44,6 @@ public class StatisticsServiceImpl implements StatisticsService {
                 continue;
             }
             SiteEntity site = optionalSiteEntity.get();
-            total.setSites(total.getSites() + 1);
             item.setStatus(site.getStatus().name());
             item.setStatusTime(site.getStatusTime().toEpochSecond(ZoneOffset.UTC) * 1000);
             String error = site.getLastError();

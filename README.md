@@ -6,7 +6,7 @@
 
 ## Overview
 
-Веб-интерфейс проекта представляет собой одну веб-страницу с тремя вкладками.
+Веб-интерфейс приложения представляет собой одну веб-страницу с тремя вкладками.
 
 ### Dashboards
 
@@ -32,8 +32,9 @@
 
 ### Search
 
-Данная вкладка предназначена для поиска страниц. На ней находятся поле поиска, выпадающий список с выбором
-сайта для поиска, а при нажатии на кнопку «Search» происводится поиск с последующей выдачей результатов.
+Данная вкладка предназначена для поиска страниц. На ней находятся выпадающий список с выбором
+сайта для поиска и поле поиска, а при нажатии на кнопку «Search» происводится поиск 
+с последующей выдачей результатов.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_dark.gif">
@@ -119,7 +120,7 @@ docker run -d --name search_engine -e "MYSQL_ROOT_PASSWORD=Mysqlpass" -e "MYSQL_
 docker run -d --name search_engine -e "MYSQL_ROOT_PASSWORD=Mysqlpass" -e "MYSQL_DATABASE=search_engine" -p 3306:3306 arm64v8/mysql:oracle --character-set-server=utf8mb4 --collation-utf8mb4_general_ci
 ```
 
-При использовании MySQL без докера, необходимо создайть БД `search_engine` и замените логин и пароль
+При использовании MySQL без докера, необходимо создайть БД `search_engine` и заменить логин и пароль
 в файле конфигурации `./application.yml`:
 
 ```yaml
@@ -132,13 +133,13 @@ spring:
 ### Настройки приложения
 
 Список сайтов для которых будет осуществляться индексация необходимо указать в файле конфигурации
-`./application.yml`, путём указания адресов (без слэша в конце) и названий:
+`./application.yml`, путём указания адреса (без слэша в конце) и названия для каждого сайта:
 
 ```yaml
 indexing-settings:
   sites:
-    - url: https://www.site.com
-      name: SiteName
+    - url: https://www.site.com # адрес сайта
+      name: SiteName # название сайта
 ```
 
 ### Запуск приложения
