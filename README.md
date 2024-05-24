@@ -16,7 +16,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_dark.gif">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_light.gif">
-  <img src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_light.gif">
+  <img alt="Shows dashboards-light.gif in light mode and dashboards-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_light.gif">
 </picture>
 
 ### Management
@@ -27,7 +27,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_dark.gif">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_light.gif">
-  <img src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_light.gif">
+  <img alt="Shows management-light.gif in light mode and management-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_light.gif">
 </picture>
 
 ### Search
@@ -38,7 +38,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_dark.gif">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_light.gif">
-  <img src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_light.gif">
+  <img alt="Shows search-light.gif in light mode and search-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_light.gif">
 </picture>
 
 ## API
