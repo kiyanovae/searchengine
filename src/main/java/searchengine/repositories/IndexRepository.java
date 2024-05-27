@@ -12,9 +12,9 @@ import java.util.List;
 @Repository
 public interface IndexRepository extends JpaRepository<IndexEntity, Integer> {
     @Query(value = """
-        SELECT new searchengine.services.Page(idx.pageId, CAST(SUM(idx.rank) as double)) \
-        FROM Index idx \
-        WHERE idx.pageId IN :pageIds AND idx.lemmaId IN :lemmaIds GROUP BY idx.pageId""")
+            SELECT new searchengine.services.Page(idx.pageId, CAST(SUM(idx.rank) as double)) \
+            FROM Index idx \
+            WHERE idx.pageId IN :pageIds AND idx.lemmaId IN :lemmaIds GROUP BY idx.pageId""")
     List<Page> getRankSumByPageIdsAndLemmaIds(List<Integer> pageIds, List<Integer> lemmaIds);
 
     @Query(value = "SELECT idx.pageId FROM Index idx WHERE idx.lemmaId = :lemmaId")

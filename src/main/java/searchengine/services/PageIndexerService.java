@@ -29,7 +29,6 @@ public class PageIndexerService {
     private final SiteRepository siteRepository;
     private final LemmaFinderService lemmaFinderService;
     private final StatusService statusService;
-    private final UpdaterService updaterService;
     private final LemmaRepository lemmaRepository;
     @Lazy
     private final PageIndexerService pageIndexerService;
@@ -37,14 +36,13 @@ public class PageIndexerService {
     @Autowired
     public PageIndexerService(IndexRepository indexRepository, PageRepository pageRepository,
                               SiteRepository siteRepository, LemmaFinderService lemmaFinderService,
-                              StatusService statusService, UpdaterService updaterService,
-                              LemmaRepository lemmaRepository, @Lazy PageIndexerService pageIndexerService) {
+                              StatusService statusService, LemmaRepository lemmaRepository,
+                              @Lazy PageIndexerService pageIndexerService) {
         this.indexRepository = indexRepository;
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.lemmaFinderService = lemmaFinderService;
         this.statusService = statusService;
-        this.updaterService = updaterService;
         this.lemmaRepository = lemmaRepository;
         this.pageIndexerService = pageIndexerService;
     }
@@ -120,6 +118,32 @@ public class PageIndexerService {
         return page;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public PageEntity cleanAndUpdatePage(SiteEntity site, String path, int code, String content) {
+        Optional<PageEntity> optionalPage = pageRepository.findByPathAndSite(path, site);
+        if (optionalPage.isPresent()) {
+            PageEntity page = optionalPage.get();
+            List<Integer> lemmaIdsByPageId = indexRepository.findLemmaIdsByPageId(page.getId());
+            indexRepository.deleteByPageId(page.getId());
+            List<LemmaEntity> lemmas = lemmaRepository.findAllById(lemmaIdsByPageId);
+            List<Integer> updateLemmasIds = new ArrayList<>();
+            List<Integer> deleteLemmasIds = new ArrayList<>();
+            lemmas.forEach(lemma -> {
+                if (lemma.getFrequency() - 1 == 0) {
+                    deleteLemmasIds.add(lemma.getId());
+                } else {
+                    updateLemmasIds.add(lemma.getId());
+                }
+            });
+            lemmaRepository.updateFrequencyAllByIds(updateLemmasIds);
+            lemmaRepository.deleteAllByIdInBatch(deleteLemmasIds);
+            page.setCode(code);
+            page.setContent(content);
+            return pageRepository.save(page);
+        }
+        return null;
+    }
+
     private void indexPage(SiteEntity site, PageEntity page) {
         if (page.getCode() < MAX_STATUS_CODE) {
             this.index(site, page);
@@ -128,7 +152,7 @@ public class PageIndexerService {
 
     private void updateAndIndexPage(SiteEntity site, String path, int code, String content) {
         synchronized (this) {
-            PageEntity page = updaterService.cleanAndUpdatePage(site, path, code, content);
+            PageEntity page = pageIndexerService.cleanAndUpdatePage(site, path, code, content);
             if (page != null) {
                 indexPage(site, page);
             }
