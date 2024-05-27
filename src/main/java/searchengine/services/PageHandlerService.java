@@ -45,7 +45,7 @@ public class PageHandlerService extends RecursiveAction {
     @Setter
     private String baseUri;
     @Setter
-    private String url;
+    private String pageUrl;
     @Setter
     private int repeatCount;
     private final SaverService saverService;
@@ -60,7 +60,7 @@ public class PageHandlerService extends RecursiveAction {
                 throw new StoppedByUserException("Indexing stopped by the user");
             }
             Thread.sleep(150);
-            Connection.Response response = Jsoup.connect(url)
+            Connection.Response response = Jsoup.connect(pageUrl)
                     .userAgent(userAgent)
                     .referrer(referrer)
                     .ignoreHttpErrors(true)
@@ -78,16 +78,16 @@ public class PageHandlerService extends RecursiveAction {
             }
             pageIndexerService.index(site, page);
             List<PageHandlerService> newTasks = parseHtml(response.parse());
-            log.info("{} indexed", url);
+            log.info("{} indexed", pageUrl);
             newTasks.forEach(ForkJoinTask::join);
         } catch (UnsupportedMimeTypeException ignored) {
         } catch (InterruptedException e) {
-            throw new RuntimeException("Indexing error '" + url + "' - " + e.getMessage());
+            throw new RuntimeException("Indexing error '" + pageUrl + "' - " + e.getMessage());
         } catch (IOException e) {
             if (repeatCount == MAX_REPEAT) {
-                throw new RuntimeException("Indexing error '" + url + "' - " + e.getMessage());
+                throw new RuntimeException("Indexing error '" + pageUrl + "' - " + e.getMessage());
             } else {
-                PageHandlerService task = createTask(url);
+                PageHandlerService task = createTask(pageUrl);
                 task.setRepeatCount(repeatCount + 1);
                 statusService.incrementTaskCount();
                 task.fork();
@@ -121,7 +121,7 @@ public class PageHandlerService extends RecursiveAction {
         PageHandlerService task = getPageHandlerService();
         task.setSite(site);
         task.setBaseUri(baseUri);
-        task.setUrl(url);
+        task.setPageUrl(url);
         return task;
     }
 

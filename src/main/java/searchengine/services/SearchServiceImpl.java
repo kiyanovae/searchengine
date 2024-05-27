@@ -5,12 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
-import searchengine.config.Page;
-import searchengine.config.QueryLemmas;
-import searchengine.config.Snippet;
-import searchengine.config.Word;
 import searchengine.dto.search.SearchData;
 import searchengine.dto.search.SearchResponse;
+import searchengine.exceptions.BadRequestException;
 import searchengine.exceptions.ConflictRequestException;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
@@ -33,10 +30,28 @@ public class SearchServiceImpl implements SearchService {
     private final PageSearcherService pageSearcherService;
 
     @Override
-    public SearchResponse search(String query, String siteUrl, int offset, int limit) {
+    public SearchResponse search(String query, String site, int offset, int limit) {
+        if (query == null || query.isEmpty()) {
+            throw new BadRequestException("Search query must not be empty");
+        }
+        if (offset < 0) {
+            throw new BadRequestException("The 'OFFSET' parameter must not be negative");
+        }
+        if (limit < 0) {
+            throw new BadRequestException("The 'LIMIT' parameter must not be negative");
+        }
+        if (site != null) {
+            return searchByOneSite(query, site, offset, limit);
+        } else {
+            return searchByAllSites(query, offset, limit);
+        }
+    }
+
+    private SearchResponse searchByOneSite(String query, String siteUrl, int offset, int limit) {
         log.info("The «{}» search query has been started", query);
         Optional<SiteEntity> optionalSite = getIndexedSite(siteUrl);
-        SiteEntity site = optionalSite.orElseThrow(() -> new ConflictRequestException("The site must have an indexed status"));
+        SiteEntity site = optionalSite.orElseThrow(() ->
+                new ConflictRequestException("The site must have an indexed status"));
         QueryLemmas queryLemmas = lemmaFinderService.getLemmaSet(query);
         List<Page> foundPages = pageSearcherService.findPagesBySite(site, queryLemmas.getFilteredSet());
         if (foundPages.isEmpty()) {
@@ -49,8 +64,7 @@ public class SearchServiceImpl implements SearchService {
         return new SearchResponse(true, foundPages.size(), dataList);
     }
 
-    @Override
-    public SearchResponse searchAll(String query, int offset, int limit) {
+    private SearchResponse searchByAllSites(String query, int offset, int limit) {
         log.info("The «{}» search query has been started", query);
         List<SiteEntity> siteEntityList = getIndexedSiteList();
         if (siteEntityList.isEmpty()) {
@@ -79,7 +93,8 @@ public class SearchServiceImpl implements SearchService {
         return siteRepository.findByUrlAndStatus(url, SiteEntity.SiteStatus.INDEXED);
     }
 
-    private List<SearchData> createSearchDataList(Map<Integer, SiteEntity> foundSites, List<Page> foundPages, int offset, int limit, QueryLemmas queryLemmas) {
+    private List<SearchData> createSearchDataList(Map<Integer, SiteEntity> foundSites, List<Page> foundPages,
+                                                  int offset, int limit, QueryLemmas queryLemmas) {
         int size = foundPages.size();
         if (offset >= size) {
             return Collections.emptyList();

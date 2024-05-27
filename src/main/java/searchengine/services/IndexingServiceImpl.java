@@ -95,8 +95,12 @@ public class IndexingServiceImpl implements IndexingService {
     public SuccessfulResponse individualPage(String url) {
         statusService.incrementAdditionalTaskCount();
         try {
-            Site configurationSite = findConfigurationSite(url).orElseThrow(() -> new BadRequestException("The '" + url + "' page is outside the sites specified in the configuration file"));
-            Connection.Response response = Jsoup.connect(url).userAgent(userAgent).referrer(referrer).ignoreHttpErrors(true).timeout(TIMEOUT_MILLISECONDS).execute();
+            Site configurationSite = findConfigurationSite(url)
+                    .orElseThrow(() ->
+                            new BadRequestException("The '" + url + "' page is outside the sites specified in the " +
+                                    "configuration file"));
+            Connection.Response response = Jsoup.connect(url).userAgent(userAgent).referrer(referrer)
+                    .ignoreHttpErrors(true).timeout(TIMEOUT_MILLISECONDS).execute();
             SiteEntity site = getSite(configurationSite);
             if (!site.getStatus().equals(SiteEntity.SiteStatus.INDEXED)) {
                 throw new ConflictRequestException("The site must have an indexed status");
@@ -139,7 +143,7 @@ public class IndexingServiceImpl implements IndexingService {
             PageHandlerService task = getPageHandlerService();
             task.setSite(site);
             String baseUri = siteUrl.concat("/");
-            task.setUrl(baseUri);
+            task.setPageUrl(baseUri);
             task.setBaseUri(baseUri);
             tasks.add(task);
             statusService.incrementTaskCount();

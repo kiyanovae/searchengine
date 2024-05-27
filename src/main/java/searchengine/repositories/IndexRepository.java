@@ -4,14 +4,17 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
-import searchengine.config.Page;
 import searchengine.model.IndexEntity;
+import searchengine.services.Page;
 
 import java.util.List;
 
 @Repository
 public interface IndexRepository extends JpaRepository<IndexEntity, Integer> {
-    @Query(value = "SELECT new searchengine.config.Page(idx.pageId, CAST(SUM(idx.rank) as double)) FROM Index idx WHERE idx.pageId IN :pageIds AND idx.lemmaId IN :lemmaIds GROUP BY idx.pageId")
+    @Query(value = """
+        SELECT new searchengine.services.Page(idx.pageId, CAST(SUM(idx.rank) as double)) \
+        FROM Index idx \
+        WHERE idx.pageId IN :pageIds AND idx.lemmaId IN :lemmaIds GROUP BY idx.pageId""")
     List<Page> getRankSumByPageIdsAndLemmaIds(List<Integer> pageIds, List<Integer> lemmaIds);
 
     @Query(value = "SELECT idx.pageId FROM Index idx WHERE idx.lemmaId = :lemmaId")

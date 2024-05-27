@@ -1,4 +1,4 @@
-package searchengine.exceptions;
+package searchengine.controllers;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -6,6 +6,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import searchengine.dto.UnsuccessfulResponse;
+import searchengine.exceptions.BadRequestException;
+import searchengine.exceptions.ConflictRequestException;
+import searchengine.exceptions.InternalServerException;
 
 @ControllerAdvice
 @Slf4j

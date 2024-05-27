@@ -15,7 +15,8 @@ import java.util.Set;
 public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer> {
     Optional<LemmaEntity> findByLemmaAndSite(String lemma, SiteEntity site);
 
-    List<LemmaEntity> findBySiteAndLemmaInAndFrequencyLessThanEqual(SiteEntity site, Set<String> lemmas, int maxFrequency);
+    List<LemmaEntity> findBySiteAndLemmaInAndFrequencyLessThanEqual(SiteEntity site, Set<String> lemmas,
+                                                                    int maxFrequency);
 
     int countBySite(SiteEntity site);
 

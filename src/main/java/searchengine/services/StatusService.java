@@ -1,29 +1,78 @@
 package searchengine.services;
 
-public interface StatusService {
-    boolean isIndexingRunning();
+import org.springframework.stereotype.Service;
 
-    void setIndexingRunning(boolean indexingRunning);
+import java.util.concurrent.atomic.AtomicInteger;
 
-    boolean isIndexingStoppedByUser();
+@Service
+public class StatusService {
+    private volatile boolean isIndexingRunning;
+    private volatile boolean isIndexingStoppedByUser;
+    private volatile boolean isAdditionalTasksStoppedByIndexing;
+    private final AtomicInteger additionalTaskCount;
+    private final AtomicInteger taskCount;
 
-    void setIndexingStoppedByUser(boolean indexingStoppedByUser);
+    public StatusService() {
+        isIndexingRunning = false;
+        isIndexingStoppedByUser = false;
+        isAdditionalTasksStoppedByIndexing = false;
+        additionalTaskCount = new AtomicInteger();
+        taskCount = new AtomicInteger();
+    }
 
-    boolean isAdditionalTasksStoppedByIndexing();
+    public boolean isIndexingRunning() {
+        return isIndexingRunning;
+    }
 
-    void setAdditionalTasksStoppedByIndexing(boolean additionalTasksStoppedByIndexing);
+    public void setIndexingRunning(boolean indexingRunning) {
+        this.isIndexingRunning = indexingRunning;
+    }
 
-    void incrementAdditionalTaskCount();
+    public boolean isIndexingStoppedByUser() {
+        return isIndexingStoppedByUser;
+    }
 
-    void decrementAdditionalTaskCount();
+    public void setIndexingStoppedByUser(boolean indexingStoppedByUser) {
+        this.isIndexingStoppedByUser = indexingStoppedByUser;
+    }
 
-    int getAdditionalTaskCount();
+    public boolean isAdditionalTasksStoppedByIndexing() {
+        return isAdditionalTasksStoppedByIndexing;
+    }
 
-    void incrementTaskCount();
+    public void setAdditionalTasksStoppedByIndexing(boolean additionalTasksStoppedByIndexing) {
+        this.isAdditionalTasksStoppedByIndexing = additionalTasksStoppedByIndexing;
+    }
 
-    void decrementTaskCount();
+    public void incrementAdditionalTaskCount() {
+        additionalTaskCount.incrementAndGet();
+    }
 
-    int getTaskCount();
+    public void decrementAdditionalTaskCount() {
+        additionalTaskCount.decrementAndGet();
+    }
 
-    void seDefault();
+    public int getAdditionalTaskCount() {
+        return additionalTaskCount.get();
+    }
+
+    public void incrementTaskCount() {
+        taskCount.incrementAndGet();
+    }
+
+    public void decrementTaskCount() {
+        taskCount.decrementAndGet();
+    }
+
+    public int getTaskCount() {
+        return taskCount.get();
+    }
+
+    public void seDefault() {
+        isIndexingRunning = false;
+        isIndexingStoppedByUser = false;
+        isAdditionalTasksStoppedByIndexing = false;
+        additionalTaskCount.set(0);
+        taskCount.set(0);
+    }
 }

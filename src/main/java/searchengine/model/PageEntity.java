@@ -35,7 +35,8 @@ public class PageEntity {
     private String content;
 
     @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "`index`", joinColumns = {@JoinColumn(name = "page_id")}, inverseJoinColumns = {@JoinColumn(name = "lemma_id")})
+    @JoinTable(name = "`index`", joinColumns = {@JoinColumn(name = "page_id")},
+            inverseJoinColumns = {@JoinColumn(name = "lemma_id")})
     private List<LemmaEntity> lemmas;
 
     public PageEntity(SiteEntity site, String path, int code, String content) {

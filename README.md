@@ -86,14 +86,14 @@
 
 ## Technical stack
 
-* Java 17,
-* Spring Boot 2.7.1,
-* Spring Data JPA 2.7.1,
-* MySQL 8.0,
-* Maven,
-* HTML5,
-* JavaScript,
-* CSS3,
+* Java 17
+* Spring Boot 2.7.1
+* Spring Data JPA 2.7.1
+* MySQL 8.0
+* Maven
+* HTML5
+* JavaScript
+* CSS3
 * Docker
 
 ## Install / How to use it?
