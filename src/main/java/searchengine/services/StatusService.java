@@ -6,16 +6,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class StatusService {
+    private static final int SLEEP_DURATION = 1000;
     private volatile boolean isIndexingRunning;
     private volatile boolean isIndexingStoppedByUser;
-    private volatile boolean isAdditionalTasksStoppedByIndexing;
+    private volatile boolean isIndexingStoppedByNewIndexing;
     private final AtomicInteger additionalTaskCount;
     private final AtomicInteger taskCount;
 
     public StatusService() {
         isIndexingRunning = false;
         isIndexingStoppedByUser = false;
-        isAdditionalTasksStoppedByIndexing = false;
+        isIndexingStoppedByNewIndexing = false;
         additionalTaskCount = new AtomicInteger();
         taskCount = new AtomicInteger();
     }
@@ -34,14 +35,6 @@ public class StatusService {
 
     public void setIndexingStoppedByUser(boolean indexingStoppedByUser) {
         this.isIndexingStoppedByUser = indexingStoppedByUser;
-    }
-
-    public boolean isAdditionalTasksStoppedByIndexing() {
-        return isAdditionalTasksStoppedByIndexing;
-    }
-
-    public void setAdditionalTasksStoppedByIndexing(boolean additionalTasksStoppedByIndexing) {
-        this.isAdditionalTasksStoppedByIndexing = additionalTasksStoppedByIndexing;
     }
 
     public void incrementAdditionalTaskCount() {
@@ -71,8 +64,27 @@ public class StatusService {
     public void seDefault() {
         isIndexingRunning = false;
         isIndexingStoppedByUser = false;
-        isAdditionalTasksStoppedByIndexing = false;
+        isIndexingStoppedByNewIndexing = false;
         additionalTaskCount.set(0);
         taskCount.set(0);
+    }
+
+    public void startIndexing() throws InterruptedException {
+        isIndexingStoppedByNewIndexing = true;
+        while (additionalTaskCount.get() != 0) {
+            Thread.sleep(SLEEP_DURATION);
+        }
+        isIndexingStoppedByNewIndexing = false;
+        isIndexingRunning = true;
+        isIndexingStoppedByUser = false;
+    }
+
+    public void stopIndexing() {
+        isIndexingRunning = false;
+        isIndexingStoppedByUser = false;
+    }
+
+    public boolean isIndexingStopped() {
+        return isIndexingStoppedByUser || isIndexingStoppedByNewIndexing;
     }
 }

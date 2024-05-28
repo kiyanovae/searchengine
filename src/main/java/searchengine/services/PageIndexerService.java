@@ -48,15 +48,13 @@ public class PageIndexerService {
     }
 
     public void handle(String url, SiteEntity site, String path, int code, String content) {
-        if (statusService.isIndexingStoppedByUser() || statusService.isAdditionalTasksStoppedByIndexing()) {
+        if (statusService.isIndexingStopped()) {
             statusService.decrementAdditionalTaskCount();
             return;
         }
         if (!pageRepository.existsByPathAndSite(path, site)) {
             PageEntity page;
-            synchronized (this) {
-                page = pageIndexerService.savePage(site, path, code, content);
-            }
+            page = pageIndexerService.savePage(site, path, code, content);
             if (page != null) {
                 indexPage(site, page);
             } else {
@@ -109,13 +107,15 @@ public class PageIndexerService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PageEntity savePage(SiteEntity site, String path, int code, String content) {
-        if (pageRepository.existsByPathAndSite(path, site)) {
-            return null;
+        synchronized (this) {
+            if (pageRepository.existsByPathAndSite(path, site)) {
+                return null;
+            }
+            PageEntity page = pageRepository.save(new PageEntity(site, path, code, content));
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site);
+            return page;
         }
-        PageEntity page = pageRepository.save(new PageEntity(site, path, code, content));
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
-        return page;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

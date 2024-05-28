@@ -1,13 +1,15 @@
 package searchengine.services;
 
-import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Lookup;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.dto.SuccessfulResponse;
@@ -16,6 +18,7 @@ import searchengine.exceptions.ConflictRequestException;
 import searchengine.exceptions.InternalServerException;
 import searchengine.exceptions.StoppedByUserException;
 import searchengine.model.SiteEntity;
+import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 
 import java.io.IOException;
@@ -27,17 +30,18 @@ import java.util.Optional;
 import java.util.concurrent.ForkJoinPool;
 
 @Slf4j
-@RequiredArgsConstructor
 @Service
 @ConfigurationProperties(prefix = "connection-settings")
 public class IndexingServiceImpl implements IndexingService {
     private static final int SLEEP_DURATION = 1000;
     private static final int TIMEOUT_MILLISECONDS = 60000;
     private final SiteRepository siteRepository;
+    private final PageRepository pageRepository;
     private final SitesList sites;
     private final PageIndexerService pageIndexerService;
     private final StatusService statusService;
-    private final SaverService saverService;
+    @Lazy
+    private final IndexingService indexingService;
     private ForkJoinPool pool = new ForkJoinPool();
     private Thread indexingThread;
     @Setter
@@ -45,19 +49,29 @@ public class IndexingServiceImpl implements IndexingService {
     @Setter
     private String referrer;
 
+    @Autowired
+    public IndexingServiceImpl(SiteRepository siteRepository, PageRepository pageRepository, SitesList sites,
+                               PageIndexerService pageIndexerService, StatusService statusService,
+                               @Lazy IndexingService indexingService) {
+        this.siteRepository = siteRepository;
+        this.pageRepository = pageRepository;
+        this.sites = sites;
+        this.pageIndexerService = pageIndexerService;
+        this.statusService = statusService;
+        this.indexingService = indexingService;
+    }
+
     @Override
     public SuccessfulResponse startIndexing() {
         synchronized (statusService) {
             if (statusService.isIndexingRunning()) {
                 throw new ConflictRequestException("Indexing has already started");
             }
-            statusService.setAdditionalTasksStoppedByIndexing(true);
-            while (statusService.getAdditionalTaskCount() != 0) {
-                sleep();
+            try {
+                statusService.startIndexing();
+            } catch (InterruptedException e) {
+                restoreIndexingState();
             }
-            statusService.setAdditionalTasksStoppedByIndexing(false);
-            statusService.setIndexingRunning(true);
-            statusService.setIndexingStoppedByUser(false);
             indexingThread = new Thread(this::indexing);
             log.info("Indexing has been started");
             indexingThread.start();
@@ -85,8 +99,7 @@ public class IndexingServiceImpl implements IndexingService {
         log.info("Indexing has been stopped");
         SuccessfulResponse response = new SuccessfulResponse();
         synchronized (statusService) {
-            statusService.setIndexingRunning(false);
-            statusService.setIndexingStoppedByUser(false);
+            statusService.stopIndexing();
             return response;
         }
     }
@@ -126,6 +139,29 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
+    @Transactional
+    public SiteEntity cleanUpAndSaveSite(String url, String name) {
+        indexingService.cleanSite(url);
+        if (statusService.isIndexingStoppedByUser()) {
+            throw new StoppedByUserException("");
+        }
+        return siteRepository.save(new SiteEntity(SiteEntity.SiteStatus.INDEXING, url, name));
+    }
+
+    @Transactional
+    public void cleanSite(String url) {
+        siteRepository.findByUrl(url).ifPresent(site -> {
+            List<Integer> pageIdsBySite = pageRepository.findIdsBySite(site);
+            for (int pageId : pageIdsBySite) {
+                pageRepository.customDeleteById(pageId);
+                if (statusService.isIndexingStoppedByUser()) {
+                    throw new StoppedByUserException("");
+                }
+            }
+            siteRepository.delete(site);
+        });
+    }
+
     private void indexing() {
         List<PageHandlerService> tasks = new ArrayList<>();
         for (Site confSite : sites.getSites()) {
@@ -136,7 +172,7 @@ public class IndexingServiceImpl implements IndexingService {
             String siteName = confSite.getName();
             SiteEntity site;
             try {
-                site = saverService.cleanUpAndSaveSite(siteUrl, siteName);
+                site = indexingService.cleanUpAndSaveSite(siteUrl, siteName);
             } catch (StoppedByUserException e) {
                 return;
             }
@@ -185,10 +221,8 @@ public class IndexingServiceImpl implements IndexingService {
         }
         if (!statusService.isIndexingStoppedByUser()) {
             log.info("Indexing has been finished");
-            synchronized (statusService) {
-                statusService.setIndexingRunning(false);
-                return;
-            }
+            statusService.setIndexingRunning(false);
+            return;
         }
         while (statusService.getTaskCount() != 0) {
             log.info("{} pages in the progress", statusService.getTaskCount());
@@ -217,7 +251,8 @@ public class IndexingServiceImpl implements IndexingService {
             return optionalSite.get();
         }
         synchronized (this) {
-            return siteRepository.findByUrl(url).orElseGet(() -> saverService.saveSiteWithIndexedStatus(url, name));
+            return siteRepository.findByUrl(url).orElseGet(() ->
+                    siteRepository.save(new SiteEntity(SiteEntity.SiteStatus.INDEXED, url, name)));
         }
     }
 
@@ -225,12 +260,16 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             Thread.sleep(SLEEP_DURATION);
         } catch (InterruptedException e) {
-            pool.shutdownNow();
-            while (!pool.isShutdown()) {
-            }
-            pool = new ForkJoinPool();
-            statusService.seDefault();
-            throw new InternalServerException("Server error");
+            restoreIndexingState();
         }
+    }
+
+    private void restoreIndexingState() {
+        pool.shutdownNow();
+        while (!pool.isShutdown()) {
+        }
+        pool = new ForkJoinPool();
+        statusService.seDefault();
+        throw new InternalServerException("Server error. Try to repeat the operation.");
     }
 }
