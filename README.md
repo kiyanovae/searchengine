@@ -5,27 +5,30 @@
 <hr>
 
 * [Overview](#overview)
-   * [Dashboards](#dashboards)
-   * [Management](#management)
-   * [Search](#search)
-* [API](#api)
-   * [GET /api/statistics](#get-apistatistics)
-   * [GET /api/startIndexing](#get-apistartindexing)
-   * [GET /api/stopIndexing](#get-apistopindexing)
-   * [POST /api/indexPage](#post-apiindexpage)
-   * [GET /api/search](#get-apisearch)
+  * [Web interface](#web-interface)
+    * [Dashboards](#dashboards)
+    * [Management](#management)
+    * [Search](#search)
+  * [API](#api)
+    * [GET /api/statistics](#get-apistatistics)
+    * [GET /api/startIndexing](#get-apistartindexing)
+    * [GET /api/stopIndexing](#get-apistopindexing)
+    * [POST /api/indexPage](#post-apiindexpage)
+    * [GET /api/search](#get-apisearch)
 * [How it Works?](#how-it-works)
 * [Technical stack](#technical-stack)
 * [Install / How to use it?]()
-   * [Настройки подключения к БД](#настройки-подключения-к-бд)
-   * [Настройки приложения](#настройки-приложения)
-   * [Запуск приложения](#запуск-приложения)
+  * [Настройки подключения к БД](#настройки-подключения-к-бд)
+  * [Настройки приложения](#настройки-приложения)
+  * [Запуск приложения](#запуск-приложения)
 
 ## Overview
 
+### Web interface
+
 Веб-интерфейс приложения представляет собой одну веб-страницу с тремя вкладками.
 
-### Dashboards
+#### Dashboards
 
 Эта вкладка открывается по умолчанию. На ней отображается общая статистика по всем сайтам, а также детальная статистика
 и статус по каждому из сайтов.
@@ -36,7 +39,7 @@
   <img alt="Shows dashboards-light.gif in light mode and dashboards-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_light.gif">
 </picture>
 
-### Management
+#### Management
 
 На этой вкладке находятся инструменты управления поисковым движком — запуск и остановка полной индексации (переиндексации),
 а также возможность добавить (обновить) отдельную страницу по ссылке.
@@ -47,7 +50,7 @@
   <img alt="Shows management-light.gif in light mode and management-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_light.gif">
 </picture>
 
-### Search
+#### Search
 
 Данная вкладка предназначена для поиска страниц. На ней находятся выпадающий список с выбором
 сайта для поиска и поле поиска, а при нажатии на кнопку «Search» происводится поиск 
@@ -59,7 +62,7 @@
   <img alt="Shows search-light.gif in light mode and search-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_light.gif">
 </picture>
 
-## API
+### API
 
 * GET /api/statistics — статистика
 * GET /api/startIndexing — запуск полной индексации
@@ -67,26 +70,26 @@
 * POST /api/indexPage — добавление или обновление отдельной страницы
 * GET /api/search — получение данных по поисковому запросу
 
-### GET /api/statistics
+#### GET /api/statistics
 
 Метод возвращает статистику и другую служебную информацию о состоянии поисковых индексов и самого движка.
 
-### GET /api/startIndexing
+#### GET /api/startIndexing
 
 Метод запускает полную индексацию всех сайтов или полную переиндексацию, если они уже проиндексированы.
 
-### GET /api/stopIndexing
+#### GET /api/stopIndexing
 
 Метод останавливает текущий процесс индексации (переиндексации).
 
-### POST /api/indexPage
+#### POST /api/indexPage
 
 Метод добавляет в индекс или обновляет отдельную страницу, адрес которой передан в параметре.
 
 Параметры:
 * url — адрес страницы, которую необходимо добавить в индекс или переиндексировать
 
-### GET /api/search
+#### GET /api/search
 
 Метод осуществляет поиск страниц по переданному поисковому запросу (параметр query).
 Чтобы получить результаты порционно, можно задать параметры offset (сдвиг от начала списка результатов)
