@@ -123,9 +123,12 @@
 
 * Java 17
 * Spring Boot 2.7.1
+* Spring Web MVC 5.3.21
 * Spring Data JPA 2.7.1
+* Hibernate 5.6.9
+* JSOUP 1.16.1
 * MySQL 8.0
-* Maven
+* Maven 3
 * HTML5
 * JavaScript
 * CSS3
