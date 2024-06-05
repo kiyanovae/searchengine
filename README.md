@@ -34,9 +34,9 @@
 и статус по каждому из сайтов.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_dark.gif">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_light.gif">
-  <img alt="Shows dashboards-light.gif in light mode and dashboards-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/dashboards_light.gif">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/dashboards_dark.gif">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/dashboards_light.gif">
+  <img alt="Shows dashboards-light.gif in light mode and dashboards-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/dashboards_light.gif">
 </picture>
 
 #### Management
@@ -45,9 +45,9 @@
 а также возможность добавить (обновить) отдельную страницу по ссылке.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_dark.gif">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_light.gif">
-  <img alt="Shows management-light.gif in light mode and management-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/management_light.gif">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/management_dark.gif">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/management_light.gif">
+  <img alt="Shows management-light.gif in light mode and management-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/management_light.gif">
 </picture>
 
 #### Search
@@ -57,39 +57,41 @@
 с последующей выдачей результатов.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_dark.gif">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_light.gif">
-  <img alt="Shows search-light.gif in light mode and search-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/dev/readme_assets/search_light.gif">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/search_dark.gif">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/search_light.gif">
+  <img alt="Shows search-light.gif in light mode and search-dark.gif in dark mode." src="https://raw.githubusercontent.com/Vasyabylba/searchengine/master/readme_assets/search_light.gif">
 </picture>
 
 ### API
 
-* GET /api/statistics — статистика
-* GET /api/startIndexing — запуск полной индексации
-* GET /api/stopIndexing — остановка текущей индексации
-* POST /api/indexPage — добавление или обновление отдельной страницы
-* GET /api/search — получение данных по поисковому запросу
+| Method    | URI                  | Description                                          |
+| --------- |----------------------|------------------------------------------------------|
+| `GET`     | `/api/statistics`    | Возвращает статистику и другую служебную информацию. |
+| `GET`     | `/api/startIndexing` | Запускает полную индексацию.                         |
+| `GET`     | `/api/stopIndexing`  | Останавливает текущий процесс индексации.            |
+| `POST`    | `/api/indexPage`     | Добавляет в индекс или обновляет отдельную страницу. |
+| `GET`     | `/api/search`        | Получает данные по поисковому запросу.               |
 
-#### GET /api/statistics
+#### `GET` /api/statistics
 
 Метод возвращает статистику и другую служебную информацию о состоянии поисковых индексов и самого движка.
 
-#### GET /api/startIndexing
+#### `GET` /api/startIndexing
 
 Метод запускает полную индексацию всех сайтов или полную переиндексацию, если они уже проиндексированы.
 
-#### GET /api/stopIndexing
+#### `GET` /api/stopIndexing
 
-Метод останавливает текущий процесс индексации (переиндексации).
+Метод останавливает текущий процесс индексации или переиндексации.
 
-#### POST /api/indexPage
+#### `POST` /api/indexPage
 
 Метод добавляет в индекс или обновляет отдельную страницу, адрес которой передан в параметре.
 
 Параметры:
 * url — адрес страницы, которую необходимо добавить в индекс или переиндексировать
 
-#### GET /api/search
+#### `GET` /api/search
 
 Метод осуществляет поиск страниц по переданному поисковому запросу (параметр query).
 Чтобы получить результаты порционно, можно задать параметры offset (сдвиг от начала списка результатов)
@@ -127,6 +129,7 @@
 * Spring Data JPA 2.7.1
 * Hibernate 5.6.9
 * JSOUP 1.16.1
+* Apache Lucene Morphology
 * MySQL 8.0
 * Maven 3
 * HTML5
