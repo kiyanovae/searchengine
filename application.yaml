@@ -1,0 +1,44 @@
+server:
+  port: 8080
+
+logging:
+  logback:
+    rollingpolicy:
+      clean-history-on-start: true
+  file:
+    path: ./logs
+
+spring:
+  datasource:
+    hikari:
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+      maximum-pool-size: 30
+      connection-timeout: 60000
+      auto-commit: false
+    username: root
+    password: Mysqlpass
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true&reWriteBatchedInserts=true
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        jdbc:
+          batch_size: 1000
+        order_inserts: true
+        connection:
+          provider_disables_autocommit: true
+    hibernate:
+      ddl-auto: update
+  output:
+    ansi:
+      enabled: always
+
+indexing-settings:
+  sites:
+    - url: https://skillbox.ru
+      name: Skillbox
+
+connection-settings:
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+  referrer: https://www.google.com
