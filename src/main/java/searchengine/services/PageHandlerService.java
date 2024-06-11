@@ -74,6 +74,7 @@ public class PageHandlerService extends RecursiveAction {
                 return;
             }
             if (page.getCode() >= MAX_STATUS_CODE) {
+                saverService.updateSiteStatusTime(site);
                 return;
             }
             pageIndexerService.index(site, page);

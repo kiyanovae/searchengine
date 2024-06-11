@@ -219,11 +219,6 @@ public class IndexingServiceImpl implements IndexingService {
                 }
             }
         }
-        if (!statusService.isIndexingStoppedByUser()) {
-            log.info("Indexing has been finished");
-            statusService.setIndexingRunning(false);
-            return;
-        }
         while (statusService.getTaskCount() != 0) {
             log.info("{} pages in the progress", statusService.getTaskCount());
             sleep();
@@ -231,6 +226,10 @@ public class IndexingServiceImpl implements IndexingService {
         while (statusService.getAdditionalTaskCount() != 0) {
             log.info("{} additional pages in the progress", statusService.getTaskCount());
             sleep();
+        }
+        if (!statusService.isIndexingStoppedByUser()) {
+            log.info("Indexing has been finished");
+            statusService.setIndexingRunning(false);
         }
     }
 

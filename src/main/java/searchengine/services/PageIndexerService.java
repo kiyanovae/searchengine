@@ -63,8 +63,7 @@ public class PageIndexerService {
         } else {
             updateAndIndexPage(site, path, code, content);
         }
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
+        pageIndexerService.updateSiteStatusTime(site);
         statusService.decrementAdditionalTaskCount();
         log.info("{}  indexed", url);
     }
@@ -80,6 +79,12 @@ public class PageIndexerService {
             indexList.add(new IndexEntity(pageId, lemmaEntity.getId(), rank));
         }
         indexRepository.saveAll(indexList);
+        pageIndexerService.updateSiteStatusTime(site);
+    }
+
+    @Retryable(maxAttempts = 14, backoff = @Backoff(delay = 200))
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateSiteStatusTime(SiteEntity site) {
         site.setStatusTime(LocalDateTime.now());
         siteRepository.save(site);
     }
@@ -112,8 +117,7 @@ public class PageIndexerService {
                 return null;
             }
             PageEntity page = pageRepository.save(new PageEntity(site, path, code, content));
-            site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
+            pageIndexerService.updateSiteStatusTime(site);
             return page;
         }
     }
