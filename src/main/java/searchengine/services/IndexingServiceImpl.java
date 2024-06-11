@@ -202,21 +202,22 @@ public class IndexingServiceImpl implements IndexingService {
             Iterator<PageHandlerService> taskIterator = tasks.iterator();
             while (taskIterator.hasNext()) {
                 PageHandlerService task = taskIterator.next();
-                if (task.isDone()) {
-                    SiteEntity site = task.getSite();
-                    if (task.isCompletedNormally()) {
-                        site.setStatus(SiteEntity.SiteStatus.INDEXED);
-                        log.info("The '{}' site has been indexed", site.getUrl());
-                    } else {
-                        String errorMessage = task.getException().getMessage();
-                        site.setStatus(SiteEntity.SiteStatus.FAILED);
-                        site.setLastError(errorMessage);
-                        log.info("Indexing of '{}' site finished with an error: {}", site.getUrl(), errorMessage);
-                    }
-                    site.setStatusTime(LocalDateTime.now());
-                    siteRepository.save(site);
-                    taskIterator.remove();
+                if (!task.isDone()) {
+                    continue;
                 }
+                SiteEntity site = task.getSite();
+                if (task.isCompletedNormally()) {
+                    site.setStatus(SiteEntity.SiteStatus.INDEXED);
+                    log.info("The '{}' site has been indexed", site.getUrl());
+                } else {
+                    String errorMessage = task.getException().getMessage();
+                    site.setStatus(SiteEntity.SiteStatus.FAILED);
+                    site.setLastError(errorMessage);
+                    log.info("Indexing of '{}' site finished with an error: {}", site.getUrl(), errorMessage);
+                }
+                site.setStatusTime(LocalDateTime.now());
+                siteRepository.save(site);
+                taskIterator.remove();
             }
         }
         while (statusService.getTaskCount() != 0) {

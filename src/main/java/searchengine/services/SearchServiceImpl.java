@@ -206,7 +206,8 @@ public class SearchServiceImpl implements SearchService {
         return snippet;
     }
 
-    private Snippet createSnippetPrefix(String content, List<Word> wordList, Word word, String wordValue, int wordIndex) {
+    private Snippet createSnippetPrefix(String content, List<Word> wordList, Word word, String wordValue,
+                                        int wordIndex) {
         int beginSnippetIndex = word.getIndex();
         int endSnippetIndex = beginSnippetIndex + wordValue.length();
         int totalLemmaCount = 1;
@@ -258,7 +259,8 @@ public class SearchServiceImpl implements SearchService {
         snippet.setTotalLemmaCount(totalLemmaCount);
     }
 
-    private String getNormalFormSnippet(String text, Map<String, String> matchesWords, Pattern pattern, Set<String> nonParticipantLemmaSet) {
+    private String getNormalFormSnippet(String text, Map<String, String> matchesWords, Pattern pattern,
+                                        Set<String> nonParticipantLemmaSet) {
         StringBuilder snippet = new StringBuilder();
         Matcher matcher = pattern.matcher(text);
         int index = 0;
