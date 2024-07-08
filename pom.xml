@@ -4,14 +4,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
-    <artifactId>SearchEngine</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <groupId>com.vasyabylba</groupId>
+    <artifactId>search-engine</artifactId>
+    <version>1.0</version>
     <packaging>jar</packaging>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
+        <springdoc-openapi.version>1.8.0</springdoc-openapi.version>
     </properties>
 
     <parent>
@@ -89,6 +90,12 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-aspects</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-ui</artifactId>
+            <version>${springdoc-openapi.version}</version>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -106,6 +113,6 @@
                 </configuration>
             </plugin>
         </plugins>
-        <finalName>search_engine</finalName>
+        <finalName>${project.artifactId}</finalName>
     </build>
 </project>
