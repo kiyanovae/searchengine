@@ -7,8 +7,6 @@ logging:
       clean-history-on-start: true
   file:
     path: ./logs
-  level:
-    org.hibernate.engine.jdbc: "off"
 
 spring:
   datasource:
@@ -44,3 +42,9 @@ indexing-settings:
 connection-settings:
   user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
   referrer: https://www.google.com
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    url: /api-docs.yaml

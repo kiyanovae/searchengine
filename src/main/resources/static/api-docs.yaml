@@ -1,0 +1,301 @@
+openapi: 3.0.3
+info:
+  title: Search Engine
+  description: |-
+    This is a Search Engine Server based on the OpenAPI 3.0 specification.
+    The API specification is used to manage the application and search for information on query.
+  contact:
+    email: vasyabylba@gmail.com
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api
+tags:
+  - name: App
+    description: Operations about search engine
+paths:
+  /statistics:
+    get:
+      tags:
+        - App
+      summary: Returns statistics and other service information
+      description: Returns statistics and other service information about the status of search indexes and the search engine
+      operationId: getStatistics
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatisticsResponse'
+  /startIndexing:
+    get:
+      tags:
+        - App
+      summary: Starts full indexing
+      description: Starts full indexing of all sites or full re-indexing if they are already indexed
+      operationId: startIndexing
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessfullResponse'
+        '409':
+          description: request conflict with the current state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'Indexing has already started'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Server error. Try to repeat the operation."
+  /stopIndexing:
+    get:
+      tags:
+        - App
+      summary: Stops the current indexing process
+      description: Stops the current indexing or re-indexing process
+      operationId: stopIndexing
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessfullResponse'
+        '409':
+          description: request conflict with the current state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: 'Indexing is not running'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Server error. Try to repeat the operation."
+  /indexPage:
+    post:
+      tags:
+        - App
+      summary: Adds to the index or updates an individual page
+      description: Adds to index or updates an individual page whose address is provided in the parameter
+      operationId: indexPage
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessfullResponse'
+        '400':
+          description: request conflict with the current state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "The 'http://www.site.com/pagepath' page is outside the sites specified in the configuration file"
+  /search:
+    get:
+      tags:
+        - App
+      summary: Retrieves data on the search query
+      description: Searches for pages based on the provided search query. You can set the `offset` and `limit` parameters to get results batch by batch
+      operationId: search
+      parameters:
+        - name: query
+          in: query
+          description: search query
+          schema:
+            type: string
+        - name: site
+          in: query
+          description: "The site to search. It is specified in the address format, for example: http://www.site.com (without slash at the end). If not specified, the search is performed for all indexed sites."
+          required: false
+          schema:
+            type: string
+        - name: offset
+          in: query
+          description: "Shift from the beginning of the result list for paginated output. If not set, the default value is 0"
+          required: false
+          schema:
+            type: integer
+            format: int32
+            example: 0
+        - name: limit
+          in: query
+          description: "The number of results to output. If not set, the default value is 20"
+          required: false
+          schema:
+            type: integer
+            format: int32
+            example: 20
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Search query must not be empty"
+components:
+  schemas:
+    StatisticsResponse:
+      type: object
+      properties:
+        result:
+          type: boolean
+          example: true
+        statistics:
+          $ref: '#/components/schemas/Statistics'
+    Statistics:
+      type: object
+      properties:
+        total:
+          type: object
+          properties:
+            sites:
+              type: integer
+              format: int32
+              example: 1
+            pages:
+              type: integer
+              format: int32
+              example: 11954
+            lemmas:
+              type: integer
+              format: int32
+              example: 88781
+            indexing:
+              type: boolean
+              example: false
+        detailed:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetailedStatisticsItem'
+    DetailedStatisticsItem:
+      type: object
+      properties:
+        url:
+          type: string
+          example: 'http://www.site.com'
+        name:
+          type: string
+          example: 'Site name'
+        status:
+          type: string
+          description: site indexing status
+          example: FAILED
+          enum:
+            - INDEXING
+            - INDEXED
+            - FAILED
+        statusTime:
+          type: integer
+          format: int64
+          example: 1718067111000
+        error:
+          type: string
+          example: 'Indexing error: the main site page is inaccessible'
+        pages:
+          type: integer
+          format: int32
+          example: 11954
+        lemmas:
+          type: integer
+          format: int32
+          example: 88781
+    SuccessfullResponse:
+      type: object
+      properties:
+        result:
+          type: boolean
+          example: true
+    SearchResponse:
+      type: object
+      properties:
+        result:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          format: int32
+          example: 1
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchData'
+    SearchData:
+      type: object
+      properties:
+        site:
+          type: string
+          example: 'http://www.site.com'
+        siteName:
+          type: string
+          example: 'SiteName'
+        uri:
+          type: string
+          example: '/media/education/interview/'
+        title:
+          type: string
+          example: '"Интервью. Ивана Иванова / Site Media'
+        snippet:
+          type: string
+          example: '...знаний создаёт <b>образовательную</b> программу, организует <b>образовательный</b> контент таким образом, чтобы он помогал аудитории достичь нужных <b>образовательных</b> целей. Он <b>выбирает</b> наиболее подходящую для...'
+        relevance:
+          type: number
+          format: double
+          example: 1.0
+        
