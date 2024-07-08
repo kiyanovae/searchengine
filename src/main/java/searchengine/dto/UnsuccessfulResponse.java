@@ -1,8 +1,8 @@
 package searchengine.dto;
 
-import lombok.Getter;
+import lombok.Data;
 
-@Getter
+@Data
 public class UnsuccessfulResponse {
     private final boolean result = false;
     private final String error;

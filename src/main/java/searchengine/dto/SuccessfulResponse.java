@@ -1,8 +1,10 @@
 package searchengine.dto;
 
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 
-@Getter
+@Data
+@AllArgsConstructor
 public class SuccessfulResponse {
     private final boolean result = true;
 }
