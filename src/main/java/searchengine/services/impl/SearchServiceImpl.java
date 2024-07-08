@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,10 +9,17 @@ import searchengine.dto.search.SearchData;
 import searchengine.dto.search.SearchResponse;
 import searchengine.exceptions.BadRequestException;
 import searchengine.exceptions.ConflictRequestException;
-import searchengine.model.PageEntity;
-import searchengine.model.SiteEntity;
+import searchengine.model.Page;
+import searchengine.model.QueryLemmas;
+import searchengine.model.Snippet;
+import searchengine.model.Word;
+import searchengine.model.entities.PageEntity;
+import searchengine.model.entities.SiteEntity;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.LemmaFinderService;
+import searchengine.services.PageSearcherService;
+import searchengine.services.SearchService;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -206,8 +213,7 @@ public class SearchServiceImpl implements SearchService {
         return snippet;
     }
 
-    private Snippet createSnippetPrefix(String content, List<Word> wordList, Word word, String wordValue,
-                                        int wordIndex) {
+    private Snippet createSnippetPrefix(String content, List<Word> wordList, Word word, String wordValue, int wordIndex) {
         int beginSnippetIndex = word.getIndex();
         int endSnippetIndex = beginSnippetIndex + wordValue.length();
         int totalLemmaCount = 1;
@@ -259,8 +265,7 @@ public class SearchServiceImpl implements SearchService {
         snippet.setTotalLemmaCount(totalLemmaCount);
     }
 
-    private String getNormalFormSnippet(String text, Map<String, String> matchesWords, Pattern pattern,
-                                        Set<String> nonParticipantLemmaSet) {
+    private String getNormalFormSnippet(String text, Map<String, String> matchesWords, Pattern pattern, Set<String> nonParticipantLemmaSet) {
         StringBuilder snippet = new StringBuilder();
         Matcher matcher = pattern.matcher(text);
         int index = 0;

@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.model;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

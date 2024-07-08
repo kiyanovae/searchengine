@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl;
 
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -17,9 +17,13 @@ import searchengine.exceptions.BadRequestException;
 import searchengine.exceptions.ConflictRequestException;
 import searchengine.exceptions.InternalServerException;
 import searchengine.exceptions.StoppedByUserException;
-import searchengine.model.SiteEntity;
+import searchengine.model.entities.SiteEntity;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.IndexingService;
+import searchengine.services.PageHandlerService;
+import searchengine.services.PageIndexerService;
+import searchengine.services.StatusService;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -202,23 +206,27 @@ public class IndexingServiceImpl implements IndexingService {
             Iterator<PageHandlerService> taskIterator = tasks.iterator();
             while (taskIterator.hasNext()) {
                 PageHandlerService task = taskIterator.next();
-                if (!task.isDone()) {
-                    continue;
+                if (task.isDone()) {
+                    SiteEntity site = task.getSite();
+                    if (task.isCompletedNormally()) {
+                        site.setStatus(SiteEntity.SiteStatus.INDEXED);
+                        log.info("The '{}' site has been indexed", site.getUrl());
+                    } else {
+                        String errorMessage = task.getException().getMessage();
+                        site.setStatus(SiteEntity.SiteStatus.FAILED);
+                        site.setLastError(errorMessage);
+                        log.info("Indexing of '{}' site finished with an error: {}", site.getUrl(), errorMessage);
+                    }
+                    site.setStatusTime(LocalDateTime.now());
+                    siteRepository.save(site);
+                    taskIterator.remove();
                 }
-                SiteEntity site = task.getSite();
-                if (task.isCompletedNormally()) {
-                    site.setStatus(SiteEntity.SiteStatus.INDEXED);
-                    log.info("The '{}' site has been indexed", site.getUrl());
-                } else {
-                    String errorMessage = task.getException().getMessage();
-                    site.setStatus(SiteEntity.SiteStatus.FAILED);
-                    site.setLastError(errorMessage);
-                    log.info("Indexing of '{}' site finished with an error: {}", site.getUrl(), errorMessage);
-                }
-                site.setStatusTime(LocalDateTime.now());
-                siteRepository.save(site);
-                taskIterator.remove();
             }
+        }
+        if (!statusService.isIndexingStoppedByUser()) {
+            log.info("Indexing has been finished");
+            statusService.setIndexingRunning(false);
+            return;
         }
         while (statusService.getTaskCount() != 0) {
             log.info("{} pages in the progress", statusService.getTaskCount());
@@ -227,10 +235,6 @@ public class IndexingServiceImpl implements IndexingService {
         while (statusService.getAdditionalTaskCount() != 0) {
             log.info("{} additional pages in the progress", statusService.getTaskCount());
             sleep();
-        }
-        if (!statusService.isIndexingStoppedByUser()) {
-            log.info("Indexing has been finished");
-            statusService.setIndexingRunning(false);
         }
     }
 

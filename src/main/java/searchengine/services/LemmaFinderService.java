@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.jsoup.Jsoup;
 import org.springframework.stereotype.Service;
+import searchengine.model.QueryLemmas;
 
 import java.util.*;
 

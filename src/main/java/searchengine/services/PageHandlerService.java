@@ -16,8 +16,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 import searchengine.exceptions.StoppedByUserException;
-import searchengine.model.PageEntity;
-import searchengine.model.SiteEntity;
+import searchengine.model.entities.PageEntity;
+import searchengine.model.entities.SiteEntity;
 import searchengine.repositories.PageRepository;
 
 import java.io.IOException;
@@ -74,7 +74,6 @@ public class PageHandlerService extends RecursiveAction {
                 return;
             }
             if (page.getCode() >= MAX_STATUS_CODE) {
-                saverService.updateSiteStatusTime(site);
                 return;
             }
             pageIndexerService.index(site, page);

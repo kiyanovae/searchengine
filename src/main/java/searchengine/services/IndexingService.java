@@ -1,7 +1,7 @@
 package searchengine.services;
 
 import searchengine.dto.SuccessfulResponse;
-import searchengine.model.SiteEntity;
+import searchengine.model.entities.SiteEntity;
 
 public interface IndexingService {
     SuccessfulResponse startIndexing();

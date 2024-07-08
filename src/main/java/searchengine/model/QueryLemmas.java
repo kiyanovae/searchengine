@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.model;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -9,11 +9,11 @@ import java.util.Set;
 @Getter
 @Setter
 public class QueryLemmas {
-    private final Set<String> NonParticipantSet;
+    private final Set<String> nonParticipantSet;
     private final Set<String> filteredSet;
 
     public QueryLemmas() {
-        this.NonParticipantSet = new HashSet<>();
+        this.nonParticipantSet = new HashSet<>();
         this.filteredSet = new HashSet<>();
     }
 }

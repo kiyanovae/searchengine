@@ -8,10 +8,10 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import searchengine.model.IndexEntity;
-import searchengine.model.LemmaEntity;
-import searchengine.model.PageEntity;
-import searchengine.model.SiteEntity;
+import searchengine.model.entities.IndexEntity;
+import searchengine.model.entities.LemmaEntity;
+import searchengine.model.entities.PageEntity;
+import searchengine.model.entities.SiteEntity;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
@@ -63,7 +63,8 @@ public class PageIndexerService {
         } else {
             updateAndIndexPage(site, path, code, content);
         }
-        pageIndexerService.updateSiteStatusTime(site);
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.save(site);
         statusService.decrementAdditionalTaskCount();
         log.info("{}  indexed", url);
     }
@@ -79,12 +80,6 @@ public class PageIndexerService {
             indexList.add(new IndexEntity(pageId, lemmaEntity.getId(), rank));
         }
         indexRepository.saveAll(indexList);
-        pageIndexerService.updateSiteStatusTime(site);
-    }
-
-    @Retryable(maxAttempts = 14, backoff = @Backoff(delay = 200))
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void updateSiteStatusTime(SiteEntity site) {
         site.setStatusTime(LocalDateTime.now());
         siteRepository.save(site);
     }
@@ -117,7 +112,8 @@ public class PageIndexerService {
                 return null;
             }
             PageEntity page = pageRepository.save(new PageEntity(site, path, code, content));
-            pageIndexerService.updateSiteStatusTime(site);
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site);
             return page;
         }
     }
