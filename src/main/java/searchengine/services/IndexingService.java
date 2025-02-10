@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -23,13 +24,12 @@ public class IndexingService {
 
     public IndexingResponse startFullIndexing() {
         List<Site> sitesList = sites.getSites();
-        List<SiteEntity> siteEntities = new ArrayList<>();
-        //deleteAllRecords();
 
         for (int i = 0; i < sitesList.size(); i++) {
             Site site = sitesList.get(i);
-            //siteEntities.add(createSite(i,site));
-            //siteRepo.deleteById(i);
+            if (siteRepo.findById(i + 1).isPresent() && site.getName().equals(siteRepo.findById(i + 1).get().getName())) {
+                siteRepo.deleteByName(site.getName());
+            }
             siteRepo.save(createSite(i + 1,site));
         }
 
