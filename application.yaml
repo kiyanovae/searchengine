@@ -1,4 +1,6 @@
 indexing-settings:
+  user-agent: "HeliontSearchBot"
+  referrer: "http://www.google.com"
   sites:
     - url: https://www.lenta.ru
       name: Лента.ру
