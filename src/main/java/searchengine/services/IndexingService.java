@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.dto.indexing.IndexingResponse;
@@ -17,6 +18,7 @@ import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.model.Status;
 
+import javax.persistence.OptimisticLockException;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -67,19 +69,16 @@ public class IndexingService {
     }
 
     public void indexSite(Site site) {
-        // Удаляем старые данные
         Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
         if (existingSite.isPresent()) {
             pageRepository.deleteBySiteId(existingSite.get().getId());
             siteRepository.delete(existingSite.get());
         }
 
-        // Создаем новую запись
         SiteEntity siteEntity = createSite(site);
         siteRepository.save(siteEntity);
         siteRepository.flush();
 
-        // Проверяем, что сущность сохранена
         Optional<SiteEntity> savedSite = siteRepository.findById(siteEntity.getId());
         if (savedSite.isEmpty()) {
             throw new RuntimeException("Не удалось сохранить сайт: " + site.getUrl());
@@ -87,15 +86,15 @@ public class IndexingService {
 
         try {
             log.info("Запуск обхода страниц для сайта с ID: {}", savedSite.get().getId());
-            // Запускаем обход страниц
             forkJoinPool.submit(() -> {
                     indexPage(siteEntity.getId(), "/");
             }).join();
-            siteEntity.setStatus(Status.INDEXED);
         } catch (Exception e) {
             siteEntity.setStatus(Status.FAILED);
             siteEntity.setLastError(e.getMessage());
         } finally {
+            log.info("Индексация завершена для сайта: {}", site.getUrl());
+            siteEntity.setStatus(Status.INDEXED);
             siteEntity.setStatusTime(Date.from(Instant.now()));
             siteRepository.save(siteEntity);
         }
@@ -111,10 +110,13 @@ public class IndexingService {
         return siteEntity;
     }
 
+    @Transactional
     private void indexPage(Integer siteId, String path) {
         try {
             SiteEntity attachedSite = siteRepository.findById(siteId)
                     .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
+//            SiteEntity attachedSite = siteRepository.findByIdWithLock(siteId)
+//                    .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
 
             String fullUrl = attachedSite.getUrl() + path;
             Document doc = Jsoup.connect(fullUrl)
@@ -126,19 +128,21 @@ public class IndexingService {
             String content = doc.html();
             int status = doc.connection().response().statusCode();
 
-            // Сохраняем страницу
             PageEntity page = new PageEntity();
             page.setSite(attachedSite);
             page.setPath(path);
             page.setCode(status);
             page.setContent(content);
-            pageRepository.save(page);
+            try {
+                pageRepository.save(page);
+                attachedSite.setStatusTime(Date.from(Instant.now()));
+                siteRepository.save(attachedSite);
+            } catch (OptimisticLockException e) {
+                log.error("Конфликт при обновлении сайта: " + path, e);
+                // Повторяем операцию с обновленной версией
+                indexPage(siteId, path);
+            }
 
-            // Обновляем время статуса
-            attachedSite.setStatusTime(Date.from(Instant.now()));
-            siteRepository.save(attachedSite);
-
-            // Находим новые ссылки
             Elements links = doc.select("a[href]");
             ConcurrentSkipListSet<String> newPaths = new ConcurrentSkipListSet<>();
             for (Element link : links) {
@@ -151,15 +155,12 @@ public class IndexingService {
                 }
             }
 
-            // Рекурсивно обходим новые ссылки
             List<ForkJoinTask<?>> tasks = new ArrayList<>();
             for (String newPath : newPaths) {
                 tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));
             }
 
             ForkJoinTask.invokeAll(tasks);
-
-            // Задержка между запросами
             Thread.sleep(1000); // 1 секунда
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException("Ошибка при обходе страницы: " + path, e);

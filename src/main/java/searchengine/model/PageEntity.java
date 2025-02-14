@@ -26,4 +26,6 @@ public class PageEntity {
 
     @Column(columnDefinition = "MEDIUMTEXT",nullable = false)
     private String content;
+
+
 }

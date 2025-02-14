@@ -31,6 +31,7 @@ public class SiteEntity {
     @Column(columnDefinition = "VARCHAR(255)", nullable = false)
     private String name;
 
-
+//    @Version
+//    private Long version;
 
 }
