@@ -22,4 +22,6 @@ public interface SiteRepository extends JpaRepository<SiteEntity, Integer> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM site s WHERE s.id = :id")
     Optional<SiteEntity> findByIdWithLock(@Param("id") Integer id);
+
+    Optional<SiteEntity> findByName(String name);
 }

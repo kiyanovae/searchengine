@@ -54,55 +54,55 @@ public class IndexingService {
     private ForkJoinPool forkJoinPool = new ForkJoinPool();
 
     public Response startFullIndexing() {
-        List<Site> sitesList = sites.getSites();
         Response response = null;
 
-        for (Site site : sitesList) {
-            if (indexSite(site)) {
-                IndexingResponse okResponse = new IndexingResponse();
-                okResponse.setResult(true);
-                response = okResponse;
-            } else {
-                ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
-                errorResponse.setResult(false);
-                response = errorResponse;
-            }
+        if (!isIndexingStarted()) {
+            indexSite();
+            IndexingResponse okResponse = new IndexingResponse();
+            okResponse.setResult(true);
+            response = okResponse;
+        } else {
+            ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
+            errorResponse.setResult(false);
+            response = errorResponse;
         }
+
         return response;
     }
 
-    public boolean indexSite(Site site) {
-        Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
-        if (existingSite.isPresent()) {
-            pageRepository.deleteBySiteId(existingSite.get().getId());
-            siteRepository.delete(existingSite.get());
-        }
+    public void indexSite() {
+        List<Site> sitesList = sites.getSites();
+        for (Site site : sitesList) {
+            Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
+            if (existingSite.isPresent()) {
+                pageRepository.deleteBySiteId(existingSite.get().getId());
+                siteRepository.delete(existingSite.get());
+            }
 
-        SiteEntity siteEntity = createSite(site);
-        siteRepository.save(siteEntity);
-        siteRepository.flush();
-
-        Optional<SiteEntity> savedSite = siteRepository.findById(siteEntity.getId());
-        if (savedSite.isEmpty()) {
-            throw new RuntimeException("Не удалось сохранить сайт: " + site.getUrl());
-        }
-
-        try {
-            log.info("Запуск обхода страниц для сайта с ID: {}", savedSite.get().getId());
-            forkJoinPool.submit(() -> {
-                    indexPage(siteEntity.getId(), "/");
-            }).join();
-        } catch (Exception e) {
-            siteEntity.setStatus(Status.FAILED);
-            siteEntity.setLastError(e.getMessage());
-            return false;
-        } finally {
-            log.info("Индексация завершена для сайта: {}", site.getUrl());
-            siteEntity.setStatus(Status.INDEXED);
-            siteEntity.setStatusTime(Date.from(Instant.now()));
+            SiteEntity siteEntity = createSite(site);
             siteRepository.save(siteEntity);
+            siteRepository.flush();
+
+            Optional<SiteEntity> savedSite = siteRepository.findById(siteEntity.getId());
+            if (savedSite.isEmpty()) {
+                throw new RuntimeException("Не удалось сохранить сайт: " + site.getUrl());
+            }
+
+            try {
+                log.info("Запуск обхода страниц для сайта с ID: {}", savedSite.get().getId());
+                forkJoinPool.submit(() -> {
+                    indexPage(siteEntity.getId(), "/");
+                }).join();
+            } catch (Exception e) {
+                siteEntity.setStatus(Status.FAILED);
+                siteEntity.setLastError(e.getMessage());
+            } finally {
+                log.info("Индексация завершена для сайта: {}", site.getUrl());
+                siteEntity.setStatus(Status.INDEXED);
+                siteEntity.setStatusTime(Date.from(Instant.now()));
+                siteRepository.save(siteEntity);
+            }
         }
-        return true;
     }
 
     private SiteEntity createSite(Site site) {
@@ -186,6 +186,16 @@ public class IndexingService {
                 || link.contains(".pptx")
                 || link.contains(".docx")
                 || link.contains("?_ga");
+    }
+
+    public boolean isIndexingStarted() {
+        for (Site site : sites.getSites()) {
+            Optional<SiteEntity> savedSite = siteRepository.findByName(site.getName());
+            if (savedSite.isPresent() && savedSite.get().getStatus() == Status.INDEXING) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }
