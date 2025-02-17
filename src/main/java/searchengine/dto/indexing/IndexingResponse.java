@@ -1,9 +1,11 @@
 package searchengine.dto.indexing;
 
-import lombok.Data;
+import lombok.*;
+import searchengine.dto.Response;
 
-@Data
-public class IndexingResponse {
-    private boolean result;
-//    private String error;
+@EqualsAndHashCode(callSuper = true)
+@Setter
+@Getter
+public class IndexingResponse extends Response {
+
 }

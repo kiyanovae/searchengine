@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
+import searchengine.dto.Response;
+import searchengine.dto.indexing.ErrorResponse;
 import searchengine.dto.indexing.IndexingResponse;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
@@ -51,23 +53,25 @@ public class IndexingService {
 
     private ForkJoinPool forkJoinPool = new ForkJoinPool();
 
-    public IndexingResponse startFullIndexing() {
+    public Response startFullIndexing() {
         List<Site> sitesList = sites.getSites();
-        IndexingResponse response = new IndexingResponse();
+        Response response = null;
 
         for (Site site : sitesList) {
-            try {
-                indexSite(site);
-            } catch (Exception e) {
-                response.setResult(false);
+            if (indexSite(site)) {
+                IndexingResponse okResponse = new IndexingResponse();
+                okResponse.setResult(true);
+                response = okResponse;
+            } else {
+                ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
+                errorResponse.setResult(false);
+                response = errorResponse;
             }
         }
-
-        response.setResult(true);
         return response;
     }
 
-    public void indexSite(Site site) {
+    public boolean indexSite(Site site) {
         Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
         if (existingSite.isPresent()) {
             pageRepository.deleteBySiteId(existingSite.get().getId());
@@ -91,12 +95,14 @@ public class IndexingService {
         } catch (Exception e) {
             siteEntity.setStatus(Status.FAILED);
             siteEntity.setLastError(e.getMessage());
+            return false;
         } finally {
             log.info("Индексация завершена для сайта: {}", site.getUrl());
             siteEntity.setStatus(Status.INDEXED);
             siteEntity.setStatusTime(Date.from(Instant.now()));
             siteRepository.save(siteEntity);
         }
+        return true;
     }
 
     private SiteEntity createSite(Site site) {

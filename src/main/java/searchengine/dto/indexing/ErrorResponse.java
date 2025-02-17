@@ -1,13 +1,12 @@
 package searchengine.dto.indexing;
 
-public class ErrorResponse {
-    private final String message;
+import lombok.*;
+import searchengine.dto.Response;
 
-    public ErrorResponse(String message) {
-        this.message = message;
-    }
-
-    public String getMessage() {
-        return message;
-    }
+@EqualsAndHashCode(callSuper = true)
+@RequiredArgsConstructor
+@Setter
+@Getter
+public class ErrorResponse extends Response {
+    private final String error;
 }
