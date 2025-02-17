@@ -60,7 +60,6 @@ public class IndexingService {
                 indexSite(site);
             } catch (Exception e) {
                 response.setResult(false);
-                //response.setError("Ошибка при индексации сайта: " + site.getUrl());
             }
         }
 
@@ -115,8 +114,6 @@ public class IndexingService {
         try {
             SiteEntity attachedSite = siteRepository.findById(siteId)
                     .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
-//            SiteEntity attachedSite = siteRepository.findByIdWithLock(siteId)
-//                    .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
 
             String fullUrl = attachedSite.getUrl() + path;
             Document doc = Jsoup.connect(fullUrl)
@@ -139,7 +136,6 @@ public class IndexingService {
                 siteRepository.save(attachedSite);
             } catch (OptimisticLockException e) {
                 log.error("Конфликт при обновлении сайта: " + path, e);
-                // Повторяем операцию с обновленной версией
                 indexPage(siteId, path);
             }
 
@@ -147,11 +143,9 @@ public class IndexingService {
             ConcurrentSkipListSet<String> newPaths = new ConcurrentSkipListSet<>();
             for (Element link : links) {
                 String nextUrl = link.attr("abs:href");
-                if (nextUrl.startsWith(attachedSite.getUrl())) {
+                if (nextUrl.startsWith(attachedSite.getUrl()) && isLink(nextUrl) && !isFile(nextUrl)) {
                     String newPath = nextUrl.substring(attachedSite.getUrl().length());
-                    if (!pageRepository.findBySiteIdAndPath(attachedSite.getId(), newPath).isPresent()) {
-                        newPaths.add(newPath);
-                    }
+                    newPaths.add(newPath);
                 }
             }
 
@@ -161,10 +155,31 @@ public class IndexingService {
             }
 
             ForkJoinTask.invokeAll(tasks);
-            Thread.sleep(1000); // 1 секунда
+            Thread.sleep(1000);
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException("Ошибка при обходе страницы: " + path, e);
         }
+    }
+
+    private static boolean isLink(String link) {
+        String regex = "(^https:\\/\\/)(?:[^@\\/\\n]+@)?(?:www\\.)?([^:\\/\\n]+)";
+        return link.matches(regex);
+    }
+
+    private static boolean isFile(String link) {
+        link = link.toLowerCase();
+        return link.contains(".jpg")
+                || link.contains(".jpeg")
+                || link.contains(".png")
+                || link.contains(".gif")
+                || link.contains(".webp")
+                || link.contains(".pdf")
+                || link.contains(".eps")
+                || link.contains(".xlsx")
+                || link.contains(".doc")
+                || link.contains(".pptx")
+                || link.contains(".docx")
+                || link.contains("?_ga");
     }
 
 }
