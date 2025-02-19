@@ -31,4 +31,9 @@ public class ApiController {
     public ResponseEntity<Response> startIndexing() {
         return ResponseEntity.ok(indexingService.startFullIndexing());
     }
+
+    @GetMapping("/stopIndexing")
+    public ResponseEntity<Response> stopIndexing() {
+        return ResponseEntity.ok(indexingService.stopIndexing());
+    }
 }

@@ -27,9 +27,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @RequiredArgsConstructor
@@ -52,20 +51,27 @@ public class IndexingService {
     private final SitesList sites;
 
     private ForkJoinPool forkJoinPool = new ForkJoinPool();
+    List<ForkJoinTask<?>> tasks = new ArrayList<>();
+
+    private ThreadPoolExecutor executor;
+
+    //private static AtomicBoolean startChecker = new AtomicBoolean(false);
 
     public Response startFullIndexing() {
         Response response = null;
-
-        if (!isIndexingStarted()) {
-            indexSite();
-            IndexingResponse okResponse = new IndexingResponse();
-            okResponse.setResult(true);
-            response = okResponse;
-        } else {
-            ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
-            errorResponse.setResult(false);
-            response = errorResponse;
-        }
+            if (indexingStatusCheck(Status.INDEXING)) {
+                ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
+                errorResponse.setResult(false);
+                response = errorResponse;
+            } else {
+                executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(3);
+                executor.setMaximumPoolSize(Runtime.getRuntime().availableProcessors());
+                executor.execute(this::indexSite);
+                //indexSite();
+                IndexingResponse okResponse = new IndexingResponse();
+                okResponse.setResult(true);
+                response = okResponse;
+            }
 
         return response;
     }
@@ -79,7 +85,7 @@ public class IndexingService {
                 siteRepository.delete(existingSite.get());
             }
 
-            SiteEntity siteEntity = createSite(site);
+            SiteEntity siteEntity = createSiteEntity(site);
             siteRepository.save(siteEntity);
             siteRepository.flush();
 
@@ -91,7 +97,7 @@ public class IndexingService {
             try {
                 log.info("Запуск обхода страниц для сайта с ID: {}", savedSite.get().getId());
                 forkJoinPool.submit(() -> {
-                    indexPage(siteEntity.getId(), "/");
+                    indexPage(siteEntity.getId(), "/");//запуск задачи
                 }).join();
             } catch (Exception e) {
                 siteEntity.setStatus(Status.FAILED);
@@ -105,7 +111,7 @@ public class IndexingService {
         }
     }
 
-    private SiteEntity createSite(Site site) {
+    private SiteEntity createSiteEntity(Site site) {
         SiteEntity siteEntity = new SiteEntity();
         siteEntity.setName(site.getName());
         siteEntity.setUrl(site.getUrl());
@@ -155,12 +161,12 @@ public class IndexingService {
                 }
             }
 
-            List<ForkJoinTask<?>> tasks = new ArrayList<>();
+
             for (String newPath : newPaths) {
-                tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));
+                tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
             }
 
-            ForkJoinTask.invokeAll(tasks);
+            ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
             Thread.sleep(1000);
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException("Ошибка при обходе страницы: " + path, e);
@@ -188,14 +194,78 @@ public class IndexingService {
                 || link.contains("?_ga");
     }
 
-    public boolean isIndexingStarted() {
+    public boolean indexingStatusCheck(Status status) {
         for (Site site : sites.getSites()) {
             Optional<SiteEntity> savedSite = siteRepository.findByName(site.getName());
-            if (savedSite.isPresent() && savedSite.get().getStatus() == Status.INDEXING) {
+            if (savedSite.isPresent() && savedSite.get().getStatus() == status) {
                 return true;
             }
         }
         return false;
+    }
+
+//    public Response stopIndexing() {
+//        Response response = null;
+//            if (isIndexingStarted()) {
+//                ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
+//                errorResponse.setResult(false);
+//                response = errorResponse;
+//            } else {
+//                stopFJPool();
+//                ErrorResponse errorResponse = new ErrorResponse("Индексация остановлена пользователем");
+//                errorResponse.setResult(true);
+//                response = errorResponse;
+//            }
+//
+//        return response;
+//    }
+
+    public Response stopIndexing() {
+        Response response = null;
+        try {
+            if (!indexingStatusCheck(Status.INDEXING)) {
+                ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
+                errorResponse.setResult(true);
+                response = errorResponse;
+                return response;
+            }
+
+            stopFJPool();
+            if (executor != null) {
+                executor.shutdownNow();
+            }
+            updateSiteStatuses(Status.FAILED);
+            ErrorResponse successResponse = new ErrorResponse("Индексация остановлена пользователем");
+            successResponse.setResult(true);
+            response = successResponse;
+
+        } catch (Exception e) {
+            log.error("Ошибка при остановке индексации", e);
+            ErrorResponse errorResponse = new ErrorResponse("Ошибка при остановке индексации");
+            errorResponse.setResult(false);
+            response = errorResponse;
+        }
+
+        return response;
+    }
+
+    @Transactional
+    private void updateSiteStatuses(Status status) {
+        List<SiteEntity> indexingSites = siteRepository.findByStatus(Status.INDEXING);
+        for (SiteEntity site : indexingSites) {
+            site.setStatus(status);
+            site.setStatusTime(Date.from(Instant.now()));
+            siteRepository.save(site);
+        }
+    }
+
+    public void stopFJPool() {
+        for (ForkJoinTask<?> task : tasks) {
+            task.cancel(true);
+        }
+        forkJoinPool.shutdownNow(); // Останавливаем все выполняющиеся задачи
+        tasks.clear();
+        log.info("Индексация остановлена пользователем");
     }
 
 }
