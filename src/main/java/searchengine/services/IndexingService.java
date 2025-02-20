@@ -61,6 +61,7 @@ public class IndexingService {
         Response response = null;
             if (indexingStatusCheck(Status.INDEXING)) {
                 ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
+                log.warn("Индексация уже запущена");
                 errorResponse.setResult(false);
                 response = errorResponse;
             } else {
@@ -72,7 +73,6 @@ public class IndexingService {
                 okResponse.setResult(true);
                 response = okResponse;
             }
-
         return response;
     }
 
@@ -84,27 +84,23 @@ public class IndexingService {
                 pageRepository.deleteBySiteId(existingSite.get().getId());
                 siteRepository.delete(existingSite.get());
             }
-
             SiteEntity siteEntity = createSiteEntity(site);
             siteRepository.save(siteEntity);
             siteRepository.flush();
 
-            Optional<SiteEntity> savedSite = siteRepository.findById(siteEntity.getId());
-            if (savedSite.isEmpty()) {
-                throw new RuntimeException("Не удалось сохранить сайт: " + site.getUrl());
-            }
-
             try {
-                log.info("Запуск обхода страниц для сайта с ID: {}", savedSite.get().getId());
+                log.info("Запуск обхода страниц для сайта с ID: {}", siteEntity.getId());
                 forkJoinPool.submit(() -> {
                     indexPage(siteEntity.getId(), "/");//запуск задачи
                 }).join();
+                siteEntity.setStatus(Status.INDEXED);
+                siteEntity.setStatusTime(Date.from(Instant.now()));
             } catch (Exception e) {
                 siteEntity.setStatus(Status.FAILED);
                 siteEntity.setLastError(e.getMessage());
+                log.error("Ошибка обхода страниц: {}", String.valueOf(e));
             } finally {
                 log.info("Индексация завершена для сайта: {}", site.getUrl());
-                siteEntity.setStatus(Status.INDEXED);
                 siteEntity.setStatusTime(Date.from(Instant.now()));
                 siteRepository.save(siteEntity);
             }
@@ -137,17 +133,14 @@ public class IndexingService {
             String content = doc.html();
             int status = doc.connection().response().statusCode();
 
-            PageEntity page = new PageEntity();
-            page.setSite(attachedSite);
-            page.setPath(path);
-            page.setCode(status);
-            page.setContent(content);
+            PageEntity page = createPageEntity(attachedSite,path,status,content);
+
             try {
                 pageRepository.save(page);
                 attachedSite.setStatusTime(Date.from(Instant.now()));
                 siteRepository.save(attachedSite);
             } catch (OptimisticLockException e) {
-                log.error("Конфликт при обновлении сайта: " + path, e);
+                log.error("Конфликт при обновлении сайта: {}", path, e);
                 indexPage(siteId, path);
             }
 
@@ -161,16 +154,26 @@ public class IndexingService {
                 }
             }
 
-
-            for (String newPath : newPaths) {
+                for (String newPath : newPaths) {
                 tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
             }
 
             ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
             Thread.sleep(1000);
         } catch (IOException | InterruptedException e) {
+            log.error("Ошибка при обходе страницы: {}", path, e);
             throw new RuntimeException("Ошибка при обходе страницы: " + path, e);
         }
+    }
+
+    public PageEntity createPageEntity(SiteEntity attachedSite, String path, int status,
+                                       String content) {
+        PageEntity page = new PageEntity();
+        page.setSite(attachedSite);
+        page.setPath(path);
+        page.setCode(status);
+        page.setContent(content);
+        return page;
     }
 
     private static boolean isLink(String link) {
@@ -225,6 +228,7 @@ public class IndexingService {
         try {
             if (!indexingStatusCheck(Status.INDEXING)) {
                 ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
+                log.warn("Индексация не запущена");
                 errorResponse.setResult(true);
                 response = errorResponse;
                 return response;
@@ -236,6 +240,7 @@ public class IndexingService {
             }
             updateSiteStatuses(Status.FAILED);
             ErrorResponse successResponse = new ErrorResponse("Индексация остановлена пользователем");
+            log.info("Индексация остановлена пользователем");
             successResponse.setResult(true);
             response = successResponse;
 
@@ -245,7 +250,6 @@ public class IndexingService {
             errorResponse.setResult(false);
             response = errorResponse;
         }
-
         return response;
     }
 
@@ -263,9 +267,13 @@ public class IndexingService {
         for (ForkJoinTask<?> task : tasks) {
             task.cancel(true);
         }
-        forkJoinPool.shutdownNow(); // Останавливаем все выполняющиеся задачи
-        tasks.clear();
-        log.info("Индексация остановлена пользователем");
+        forkJoinPool.shutdownNow();
+        tasks.clear();;
+        if (forkJoinPool.isShutdown()) {
+            log.info("ForkJoinPool успешно остановлен.");
+        } else {
+            log.warn("ForkJoinPool не был остановлен.");
+        }
     }
 
 }
