@@ -28,7 +28,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @RequiredArgsConstructor
@@ -122,42 +121,21 @@ public class IndexingService {
         try {
             SiteEntity attachedSite = siteRepository.findById(siteId)
                     .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
-
             String fullUrl = attachedSite.getUrl() + path;
-            Document doc = Jsoup.connect(fullUrl)
-                    .userAgent(userAgent)
-                    .referrer(referrer)
-                    .timeout(5000)
-                    .get();
-
-            String content = doc.html();
-            int status = doc.connection().response().statusCode();
-
-            PageEntity page = createPageEntity(attachedSite,path,status,content);
-
-            try {
+            Document doc = getDocument(fullUrl);
+            PageEntity page = createPageEntity(attachedSite,path, doc);
+//            try {
                 pageRepository.save(page);
                 attachedSite.setStatusTime(Date.from(Instant.now()));
                 siteRepository.save(attachedSite);
-            } catch (OptimisticLockException e) {
-                log.error("Конфликт при обновлении сайта: {}", path, e);
-                indexPage(siteId, path);
-            }
-
-            Elements links = doc.select("a[href]");
-            ConcurrentSkipListSet<String> newPaths = new ConcurrentSkipListSet<>();
-            for (Element link : links) {
-                String nextUrl = link.attr("abs:href");
-                if (nextUrl.startsWith(attachedSite.getUrl()) && isLink(nextUrl) && !isFile(nextUrl)) {
-                    String newPath = nextUrl.substring(attachedSite.getUrl().length());
-                    newPaths.add(newPath);
-                }
-            }
-
-                for (String newPath : newPaths) {
+//            } catch (OptimisticLockException e) {
+//                log.error("Конфликт при обновлении сайта: {}", path, e);
+//                indexPage(siteId, path);
+//            }
+            ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
+            for (String newPath : newPaths) {
                 tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
             }
-
             ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
             Thread.sleep(1000);
         } catch (IOException | InterruptedException e) {
@@ -166,8 +144,31 @@ public class IndexingService {
         }
     }
 
-    public PageEntity createPageEntity(SiteEntity attachedSite, String path, int status,
-                                       String content) {
+    public ConcurrentSkipListSet<String> getLinks(Document doc, String url) {
+        Elements links = doc.select("a[href]");
+        ConcurrentSkipListSet<String> newPaths = new ConcurrentSkipListSet<>();
+        for (Element link : links) {
+            String nextUrl = link.attr("abs:href");
+            if (nextUrl.startsWith(url) && isLink(nextUrl) && !isFile(nextUrl)) {
+                String newPath = nextUrl.substring(url.length());
+                newPaths.add(newPath);
+            }
+        }
+        return newPaths;
+    }
+
+    public Document getDocument(String url) throws IOException {
+        return Jsoup.connect(url)
+                .userAgent(userAgent)
+                .referrer(referrer)
+                .timeout(5000)
+                .get();
+    }
+
+    public PageEntity createPageEntity(SiteEntity attachedSite, String path, Document doc) throws IOException {
+        String content = doc.html();
+        int status = doc.connection().response().statusCode();
+
         PageEntity page = new PageEntity();
         page.setSite(attachedSite);
         page.setPath(path);
@@ -225,7 +226,6 @@ public class IndexingService {
 
     public Response stopIndexing() {
         Response response = null;
-        try {
             if (!indexingStatusCheck(Status.INDEXING)) {
                 ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
                 log.warn("Индексация не запущена");
@@ -234,22 +234,16 @@ public class IndexingService {
                 return response;
             }
 
-            stopFJPool();
+            stopForkJoinPool();
             if (executor != null) {
                 executor.shutdownNow();
             }
             updateSiteStatuses(Status.FAILED);
+
             ErrorResponse successResponse = new ErrorResponse("Индексация остановлена пользователем");
             log.info("Индексация остановлена пользователем");
             successResponse.setResult(true);
             response = successResponse;
-
-        } catch (Exception e) {
-            log.error("Ошибка при остановке индексации", e);
-            ErrorResponse errorResponse = new ErrorResponse("Ошибка при остановке индексации");
-            errorResponse.setResult(false);
-            response = errorResponse;
-        }
         return response;
     }
 
@@ -263,7 +257,7 @@ public class IndexingService {
         }
     }
 
-    public void stopFJPool() {
+    public void stopForkJoinPool() {
         for (ForkJoinTask<?> task : tasks) {
             task.cancel(true);
         }
