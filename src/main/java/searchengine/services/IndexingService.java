@@ -28,6 +28,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @RequiredArgsConstructor
@@ -50,14 +51,15 @@ public class IndexingService {
     private final SitesList sites;
 
     private ForkJoinPool forkJoinPool = new ForkJoinPool();
-    List<ForkJoinTask<?>> tasks = new ArrayList<>();
+    List<ForkJoinTask<?>> tasks = new CopyOnWriteArrayList<>();
 
     private ThreadPoolExecutor executor;
 
-    //private static AtomicBoolean startChecker = new AtomicBoolean(false);
+    private static AtomicBoolean isStopped = new AtomicBoolean(false);
 
     public Response startFullIndexing() {
         Response response = null;
+        isStopped.set(false);
             if (indexingStatusCheck(Status.INDEXING)) {
                 ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
                 log.warn("Индексация уже запущена");
@@ -76,32 +78,35 @@ public class IndexingService {
     }
 
     public void indexSite() {
-        List<Site> sitesList = sites.getSites();
-        for (Site site : sitesList) {
-            Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
-            if (existingSite.isPresent()) {
-                pageRepository.deleteBySiteId(existingSite.get().getId());
-                siteRepository.delete(existingSite.get());
-            }
-            SiteEntity siteEntity = createSiteEntity(site);
-            siteRepository.save(siteEntity);
-            siteRepository.flush();
-
-            try {
-                log.info("Запуск обхода страниц для сайта с ID: {}", siteEntity.getId());
-                forkJoinPool.submit(() -> {
-                    indexPage(siteEntity.getId(), "/");//запуск задачи
-                }).join();
-                siteEntity.setStatus(Status.INDEXED);
-                siteEntity.setStatusTime(Date.from(Instant.now()));
-            } catch (Exception e) {
-                siteEntity.setStatus(Status.FAILED);
-                siteEntity.setLastError(e.getMessage());
-                log.error("Ошибка обхода страниц: {}", String.valueOf(e));
-            } finally {
-                log.info("Индексация завершена для сайта: {}", site.getUrl());
-                siteEntity.setStatusTime(Date.from(Instant.now()));
+        while (!isStopped.get()) {
+            List<Site> sitesList = sites.getSites();
+            for (Site site : sitesList) {
+                Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
+                if (existingSite.isPresent()) {
+                    pageRepository.deleteBySiteId(existingSite.get().getId());
+                    siteRepository.delete(existingSite.get());
+                }
+                SiteEntity siteEntity = createSiteEntity(site);
                 siteRepository.save(siteEntity);
+                siteRepository.flush();
+
+                try {
+                    log.info("Запуск обхода страниц для сайта с ID: {}", siteEntity.getId());
+                    forkJoinPool.submit(() -> {
+                        indexPage(siteEntity.getId(), "/");//запуск задачи
+                    }).join();
+                    siteEntity.setStatus(Status.INDEXED);
+                    siteEntity.setStatusTime(Date.from(Instant.now()));
+                } catch (Exception e) {
+                    siteEntity.setStatus(Status.FAILED);
+                    siteEntity.setLastError(e.getMessage());
+                    log.error("Статус индексации FAILED: {}", String.valueOf(e));
+                    return;
+                } finally {
+                    siteEntity.setStatusTime(Date.from(Instant.now()));
+                    siteRepository.save(siteEntity);
+                }
+                log.info("Индексация завершена для сайта: {}", site.getUrl());
             }
         }
     }
@@ -118,29 +123,29 @@ public class IndexingService {
 
     @Transactional
     private void indexPage(Integer siteId, String path) {
-        try {
-            SiteEntity attachedSite = siteRepository.findById(siteId)
-                    .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
-            String fullUrl = attachedSite.getUrl() + path;
-            Document doc = getDocument(fullUrl);
-            PageEntity page = createPageEntity(attachedSite,path, doc);
-//            try {
+        while (!isStopped.get()) {
+            try {
+                SiteEntity attachedSite = siteRepository.findById(siteId)
+                        .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
+                String fullUrl = attachedSite.getUrl() + path;
+                Document doc = getDocument(fullUrl);
+                PageEntity page = createPageEntity(attachedSite, path, doc);
+
                 pageRepository.save(page);
                 attachedSite.setStatusTime(Date.from(Instant.now()));
                 siteRepository.save(attachedSite);
-//            } catch (OptimisticLockException e) {
-//                log.error("Конфликт при обновлении сайта: {}", path, e);
-//                indexPage(siteId, path);
-//            }
-            ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
-            for (String newPath : newPaths) {
-                tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
+
+                ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
+                for (String newPath : newPaths) {
+                    tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
+                }
+                ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
+                Thread.sleep(1000);
+            } catch (IOException | InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("Ошибка при обходе страницы: {}", path, e);
+                throw new RuntimeException("Ошибка при обходе страницы: " + path, e);
             }
-            ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
-            Thread.sleep(1000);
-        } catch (IOException | InterruptedException e) {
-            log.error("Ошибка при обходе страницы: {}", path, e);
-            throw new RuntimeException("Ошибка при обходе страницы: " + path, e);
         }
     }
 
@@ -165,7 +170,7 @@ public class IndexingService {
                 .get();
     }
 
-    public PageEntity createPageEntity(SiteEntity attachedSite, String path, Document doc) throws IOException {
+    public PageEntity createPageEntity(SiteEntity attachedSite, String path, Document doc) {
         String content = doc.html();
         int status = doc.connection().response().statusCode();
 
@@ -226,32 +231,35 @@ public class IndexingService {
 
     public Response stopIndexing() {
         Response response = null;
-            if (!indexingStatusCheck(Status.INDEXING)) {
-                ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
-                log.warn("Индексация не запущена");
-                errorResponse.setResult(true);
-                response = errorResponse;
-                return response;
-            }
+        if (!indexingStatusCheck(Status.INDEXING)) {
+            ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
+            log.warn("Индексация не запущена");
+            errorResponse.setResult(true);
+            response = errorResponse;
+            return response;
+        }
 
-            stopForkJoinPool();
-            if (executor != null) {
-                executor.shutdownNow();
-            }
-            updateSiteStatuses(Status.FAILED);
+        updateSiteStatuses(Status.INDEXING,Status.FAILED);
+        isStopped.set(true);
+        stopForkJoinPool();
+        if (executor != null) {
+            executor.shutdownNow();
+            log.info(executor.isShutdown() ? "ThreadPoolExecutor успешно остановлен." : "ThreadPoolExecutor не был остановлен.");
+        }
 
-            ErrorResponse successResponse = new ErrorResponse("Индексация остановлена пользователем");
-            log.info("Индексация остановлена пользователем");
-            successResponse.setResult(true);
-            response = successResponse;
+
+        ErrorResponse successResponse = new ErrorResponse("Индексация остановлена пользователем");
+        log.info("Индексация остановлена пользователем");
+        successResponse.setResult(true);
+        response = successResponse;
         return response;
     }
 
     @Transactional
-    private void updateSiteStatuses(Status status) {
-        List<SiteEntity> indexingSites = siteRepository.findByStatus(Status.INDEXING);
+    private void updateSiteStatuses(Status from,Status to) {
+        List<SiteEntity> indexingSites = siteRepository.findByStatus(from);
         for (SiteEntity site : indexingSites) {
-            site.setStatus(status);
+            site.setStatus(to);
             site.setStatusTime(Date.from(Instant.now()));
             siteRepository.save(site);
         }
@@ -263,11 +271,7 @@ public class IndexingService {
         }
         forkJoinPool.shutdownNow();
         tasks.clear();;
-        if (forkJoinPool.isShutdown()) {
-            log.info("ForkJoinPool успешно остановлен.");
-        } else {
-            log.warn("ForkJoinPool не был остановлен.");
-        }
+        log.info(forkJoinPool.isShutdown() ? "ForkJoinPool успешно остановлен." : "ForkJoinPool не был остановлен.");
     }
 
 }
