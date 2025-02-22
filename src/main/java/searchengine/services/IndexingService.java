@@ -20,10 +20,8 @@ import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.model.Status;
 
-import javax.persistence.OptimisticLockException;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -66,10 +64,10 @@ public class IndexingService {
                 errorResponse.setResult(false);
                 response = errorResponse;
             } else {
-                executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(3);
+                log.info("Запущена индексация");
+                executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
                 executor.setMaximumPoolSize(Runtime.getRuntime().availableProcessors());
                 executor.execute(this::indexSite);
-                //indexSite();
                 IndexingResponse okResponse = new IndexingResponse();
                 okResponse.setResult(true);
                 response = okResponse;
@@ -78,34 +76,36 @@ public class IndexingService {
     }
 
     public void indexSite() {
-        while (!isStopped.get()) {
-            List<Site> sitesList = sites.getSites();
-            for (Site site : sitesList) {
-                Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
-                if (existingSite.isPresent()) {
-                    pageRepository.deleteBySiteId(existingSite.get().getId());
-                    siteRepository.delete(existingSite.get());
-                }
-                SiteEntity siteEntity = createSiteEntity(site);
-                siteRepository.save(siteEntity);
-                siteRepository.flush();
+        if (isStopped.get()) {
+            return;
+        }
+        List<Site> sitesList = sites.getSites();
+        for (Site site : sitesList) {
+            Optional<SiteEntity> existingSite = siteRepository.findByUrl(site.getUrl());
+            if (existingSite.isPresent()) {
+                pageRepository.deleteBySiteId(existingSite.get().getId());
+                siteRepository.delete(existingSite.get());
+            }
+            SiteEntity siteEntity = createSiteEntity(site);
+            siteRepository.save(siteEntity);
+            siteRepository.flush();
 
-                try {
-                    log.info("Запуск обхода страниц для сайта с ID: {}", siteEntity.getId());
-                    forkJoinPool.submit(() -> {
-                        indexPage(siteEntity.getId(), "/");//запуск задачи
-                    }).join();
-                    siteEntity.setStatus(Status.INDEXED);
-                    siteEntity.setStatusTime(Date.from(Instant.now()));
-                } catch (Exception e) {
-                    siteEntity.setStatus(Status.FAILED);
-                    siteEntity.setLastError(e.getMessage());
-                    log.error("Статус индексации FAILED: {}", String.valueOf(e));
-                    return;
-                } finally {
-                    siteEntity.setStatusTime(Date.from(Instant.now()));
-                    siteRepository.save(siteEntity);
-                }
+            try {
+                forkJoinPool.submit(() -> {
+                    indexPage(siteEntity.getId(), "/");//запуск задачи
+                }).join();
+                siteEntity.setStatus(Status.INDEXED);
+                siteEntity.setStatusTime(Date.from(Instant.now()));
+            } catch (Exception e) {
+                siteEntity.setStatus(Status.FAILED);
+                siteEntity.setLastError(e.getMessage());
+                //log.warn("Статус индексации FAILED: {}", String.valueOf(e));
+                return;
+            } finally {
+                siteEntity.setStatusTime(Date.from(Instant.now()));
+                siteRepository.save(siteEntity);
+            }
+            if (siteEntity.getStatus().equals(Status.INDEXED) && !isStopped.get()) {
                 log.info("Индексация завершена для сайта: {}", site.getUrl());
             }
         }
@@ -123,28 +123,30 @@ public class IndexingService {
 
     @Transactional
     private void indexPage(Integer siteId, String path) {
-        while (!isStopped.get()) {
-            try {
-                SiteEntity attachedSite = siteRepository.findById(siteId)
-                        .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
-                String fullUrl = attachedSite.getUrl() + path;
-                Document doc = getDocument(fullUrl);
-                PageEntity page = createPageEntity(attachedSite, path, doc);
+        if (isStopped.get()) {
+            return;
+        }
+        log.info("Запуск обхода страниц для сайта с ID: {}", siteId);
+        try {
+            SiteEntity attachedSite = siteRepository.findById(siteId)
+                    .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
+            String fullUrl = attachedSite.getUrl() + path;
+            Document doc = getDocument(fullUrl);
+            PageEntity page = createPageEntity(attachedSite, path, doc);
 
-                pageRepository.save(page);
-                attachedSite.setStatusTime(Date.from(Instant.now()));
-                siteRepository.save(attachedSite);
+            pageRepository.save(page);
+            attachedSite.setStatusTime(Date.from(Instant.now()));
+            siteRepository.save(attachedSite);
 
-                ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
-                for (String newPath : newPaths) {
-                    tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
-                }
-                ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
-                Thread.sleep(1000);
-            } catch (IOException | InterruptedException e) {
-                Thread.currentThread().interrupt();
+            ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
+            for (String newPath : newPaths) {
+                tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
+            }
+            ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
+            Thread.sleep(1000);
+        } catch (Exception e) {
+            if (!isStopped.get()) {
                 log.error("Ошибка при обходе страницы: {}", path, e);
-                throw new RuntimeException("Ошибка при обходе страницы: " + path, e);
             }
         }
     }
