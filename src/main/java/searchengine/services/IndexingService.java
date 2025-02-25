@@ -19,14 +19,20 @@ import searchengine.dto.indexing.IndexingResponse;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.model.Status;
+import searchengine.services.parser.HtmlParse;
+import searchengine.services.parser.SiteMap;
+import searchengine.services.parser.SiteMapRecursiveAction;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -91,8 +97,11 @@ public class IndexingService {
             siteRepository.flush();
 
             try {
+//                forkJoinPool.submit(() -> {
+//                    indexPage(siteEntity.getId(), "/");//запуск задачи
+//                }).join();
                 forkJoinPool.submit(() -> {
-                    indexPage(siteEntity.getId(), "/");//запуск задачи
+                    indexPage(siteEntity.getId());//запуск задачи
                 }).join();
                 siteEntity.setStatus(Status.INDEXED);
                 siteEntity.setStatusTime(Date.from(Instant.now()));
@@ -122,7 +131,7 @@ public class IndexingService {
     }
 
     @Transactional
-    private void indexPage(Integer siteId, String path) {
+    private void indexPage(Integer siteId) {
         if (isStopped.get()) {
             return;
         }
@@ -130,25 +139,43 @@ public class IndexingService {
         try {
             SiteEntity attachedSite = siteRepository.findById(siteId)
                     .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
-            String fullUrl = attachedSite.getUrl() + path;
-            Document doc = getDocument(fullUrl);
-            PageEntity page = createPageEntity(attachedSite, path, doc);
+//            String fullUrl = attachedSite.getUrl() + path;
+//            Document doc = getDocument(fullUrl);
+//            PageEntity page = createPageEntity(attachedSite, path, doc);
 
-            pageRepository.save(page);
+            SiteMap siteMap = new SiteMap(attachedSite.getUrl());
+            SiteMapRecursiveAction task = new SiteMapRecursiveAction(siteMap, attachedSite, pageRepository);
+            new ForkJoinPool().invoke(task);
+            //PageEntity page = createPageEntity(attachedSite, doc);
+
+            //pageRepository.save(page);
             attachedSite.setStatusTime(Date.from(Instant.now()));
             siteRepository.save(attachedSite);
 
-            ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
-            for (String newPath : newPaths) {
-                tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
-            }
-            ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
-            Thread.sleep(1000);
+//            ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
+//            for (String newPath : newPaths) {
+//                tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
+//            }
+//            ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
+//            Thread.sleep(1000);
         } catch (Exception e) {
             if (!isStopped.get()) {
-                log.error("Ошибка при обходе страницы: {}", path, e);
+                //log.error("Ошибка при обходе страницы: {}", path, e);
+                log.error("Ошибка при обходе страницы: ", e);
             }
         }
+    }
+
+    public static String getProtocolAndDomain(String url) {
+        String regEx = "(^https:\\/\\/)(?:[^@\\/\\n]+@)?(?:www\\.)?([^:\\/\\n]+)";
+        ByteBuffer buffer = StandardCharsets.UTF_8.encode(regEx);
+        String utf8EncodedString = StandardCharsets.UTF_8.decode(buffer).toString();
+        Pattern pattern = Pattern.compile(utf8EncodedString);
+        return pattern.matcher(url)
+                .results()
+                .map(m -> m.group(1) + m.group(2))
+                .findFirst()
+                .orElseThrow();
     }
 
     public ConcurrentSkipListSet<String> getLinks(Document doc, String url) {
@@ -168,17 +195,19 @@ public class IndexingService {
         return Jsoup.connect(url)
                 .userAgent(userAgent)
                 .referrer(referrer)
-                .timeout(5000)
+                .timeout(   1000)
                 .get();
     }
 
-    public PageEntity createPageEntity(SiteEntity attachedSite, String path, Document doc) {
+    public PageEntity createPageEntity(SiteEntity attachedSite, Document doc) {
         String content = doc.html();
         int status = doc.connection().response().statusCode();
+        String domain = getProtocolAndDomain(attachedSite.getUrl());
 
         PageEntity page = new PageEntity();
         page.setSite(attachedSite);
-        page.setPath(path);
+        page.setPath(attachedSite.getUrl().substring(domain.length()));
+        //page.setPath(path);
         page.setCode(status);
         page.setContent(content);
         return page;
@@ -215,22 +244,6 @@ public class IndexingService {
         return false;
     }
 
-//    public Response stopIndexing() {
-//        Response response = null;
-//            if (isIndexingStarted()) {
-//                ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
-//                errorResponse.setResult(false);
-//                response = errorResponse;
-//            } else {
-//                stopFJPool();
-//                ErrorResponse errorResponse = new ErrorResponse("Индексация остановлена пользователем");
-//                errorResponse.setResult(true);
-//                response = errorResponse;
-//            }
-//
-//        return response;
-//    }
-
     public Response stopIndexing() {
         Response response = null;
         if (!indexingStatusCheck(Status.INDEXING)) {
@@ -248,8 +261,6 @@ public class IndexingService {
             executor.shutdownNow();
             log.info(executor.isShutdown() ? "ThreadPoolExecutor успешно остановлен." : "ThreadPoolExecutor не был остановлен.");
         }
-
-
         ErrorResponse successResponse = new ErrorResponse("Индексация остановлена пользователем");
         log.info("Индексация остановлена пользователем");
         successResponse.setResult(true);
@@ -272,7 +283,7 @@ public class IndexingService {
             task.cancel(true);
         }
         forkJoinPool.shutdownNow();
-        tasks.clear();;
+        tasks.clear();
         log.info(forkJoinPool.isShutdown() ? "ForkJoinPool успешно остановлен." : "ForkJoinPool не был остановлен.");
     }
 
