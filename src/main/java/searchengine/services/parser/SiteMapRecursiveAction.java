@@ -16,20 +16,20 @@ import searchengine.services.PageRepository;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.RecursiveAction;
+import java.util.Set;
+import java.util.concurrent.*;
 
 public class SiteMapRecursiveAction extends RecursiveAction {
 
     private static final Logger log = LoggerFactory.getLogger(IndexingService.class);
 
     private SiteMap siteMap;
-    private static CopyOnWriteArrayList linksPool = new CopyOnWriteArrayList();
+    private static Set<String> linksPool = ConcurrentHashMap.newKeySet();
+    //private static CopyOnWriteArrayList linksPool = new CopyOnWriteArrayList();
 
     private final SiteEntity siteEntity;
     private final PageRepository pageRepository;
-    ConcurrentSkipListSet<String> newPaths = new ConcurrentSkipListSet<>();
+    private static Set<String> newPaths = ConcurrentHashMap.newKeySet();;
 
     public SiteMapRecursiveAction(SiteMap siteMap, SiteEntity siteEntity, PageRepository pageRepository) {
         this.siteMap = siteMap;
@@ -41,10 +41,9 @@ public class SiteMapRecursiveAction extends RecursiveAction {
     protected void compute() {
         linksPool.add(siteMap.getUrl());
 
-        //ConcurrentSkipListSet<String> links = HtmlParse.getLinks(siteMap.getUrl());
         Document doc = getDocumentByUrl(siteMap.getUrl());
         savePage(doc);
-        ConcurrentSkipListSet<String> links = getLinks(siteMap.getUrl(),doc);
+        Set<String> links = getLinks(doc);
         for (String link : links) {
             if (!linksPool.contains(link)) {
                 linksPool.add(link);
@@ -63,16 +62,7 @@ public class SiteMapRecursiveAction extends RecursiveAction {
         }
     }
 
-    public ConcurrentSkipListSet<String> getLinks(String url, Document doc) {
-//        Elements links = doc.select("a[href]");
-//        ConcurrentSkipListSet<String> newPaths = new ConcurrentSkipListSet<>();
-//        for (Element link : links) {
-//            String nextUrl = link.attr("abs:href");
-//            if (nextUrl.startsWith(url) && isLink(nextUrl) && !isFile(nextUrl)) {
-//                String newPath = nextUrl.substring(url.length());
-//                newPaths.add(newPath);
-//            }
-//        }
+    public Set<String> getLinks(Document doc) {
         Elements elements = doc.select("a[href~=^/?([\\w\\d/-]+)?]");
         for (Element link : elements) {
             String checkingUrl = link.attr("abs:href");
@@ -81,11 +71,6 @@ public class SiteMapRecursiveAction extends RecursiveAction {
             }
         }
         return newPaths;
-    }
-
-    private static boolean isLink(String link) {
-        String regex = "(^https:\\/\\/)(?:[^@\\/\\n]+@)?(?:www\\.)?([^:\\/\\n]+)";
-        return link.matches(regex);
     }
 
     private static boolean isFile(String link) {
@@ -150,6 +135,10 @@ public class SiteMapRecursiveAction extends RecursiveAction {
         page.setContent(content);
 
         pageRepository.save(page);
+
+        log.info("Domain: {}", siteMap.getDomain());
+        log.info("URL: {}", siteMap.getUrl());
+        log.info("Path: {}", path);
 
         return page;
     }

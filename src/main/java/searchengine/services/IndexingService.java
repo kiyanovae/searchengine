@@ -1,10 +1,6 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,14 +12,11 @@ import searchengine.config.SitesList;
 import searchengine.dto.Response;
 import searchengine.dto.indexing.ErrorResponse;
 import searchengine.dto.indexing.IndexingResponse;
-import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.model.Status;
-import searchengine.services.parser.HtmlParse;
 import searchengine.services.parser.SiteMap;
 import searchengine.services.parser.SiteMapRecursiveAction;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -62,7 +55,7 @@ public class IndexingService {
     private static AtomicBoolean isStopped = new AtomicBoolean(false);
 
     public Response startFullIndexing() {
-        Response response = null;
+        Response response;
         isStopped.set(false);
             if (indexingStatusCheck(Status.INDEXING)) {
                 ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
@@ -71,7 +64,7 @@ public class IndexingService {
                 response = errorResponse;
             } else {
                 log.info("Запущена индексация");
-                executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
+                executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(3);
                 executor.setMaximumPoolSize(Runtime.getRuntime().availableProcessors());
                 executor.execute(this::indexSite);
                 IndexingResponse okResponse = new IndexingResponse();
@@ -97,9 +90,6 @@ public class IndexingService {
             siteRepository.flush();
 
             try {
-//                forkJoinPool.submit(() -> {
-//                    indexPage(siteEntity.getId(), "/");//запуск задачи
-//                }).join();
                 forkJoinPool.submit(() -> {
                     indexPage(siteEntity.getId());//запуск задачи
                 }).join();
@@ -124,6 +114,9 @@ public class IndexingService {
         SiteEntity siteEntity = new SiteEntity();
         siteEntity.setName(site.getName());
         siteEntity.setUrl(site.getUrl());
+        if (site.getUrl().contains("www.")) {
+            siteEntity.setUrl(site.getUrl().replace("www.",""));
+        }
         siteEntity.setLastError(null);
         siteEntity.setStatus(Status.INDEXING);
         siteEntity.setStatusTime(Date.from(Instant.now()));
@@ -139,25 +132,14 @@ public class IndexingService {
         try {
             SiteEntity attachedSite = siteRepository.findById(siteId)
                     .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
-//            String fullUrl = attachedSite.getUrl() + path;
-//            Document doc = getDocument(fullUrl);
-//            PageEntity page = createPageEntity(attachedSite, path, doc);
 
             SiteMap siteMap = new SiteMap(attachedSite.getUrl());
             SiteMapRecursiveAction task = new SiteMapRecursiveAction(siteMap, attachedSite, pageRepository);
             new ForkJoinPool().invoke(task);
-            //PageEntity page = createPageEntity(attachedSite, doc);
 
-            //pageRepository.save(page);
             attachedSite.setStatusTime(Date.from(Instant.now()));
             siteRepository.save(attachedSite);
 
-//            ConcurrentSkipListSet<String> newPaths = getLinks(doc, attachedSite.getUrl());
-//            for (String newPath : newPaths) {
-//                tasks.add(ForkJoinTask.adapt(() -> indexPage(siteId, newPath)));//создание задачи
-//            }
-//            ForkJoinTask.invokeAll(tasks);//запуск на параллельное выполнение
-//            Thread.sleep(1000);
         } catch (Exception e) {
             if (!isStopped.get()) {
                 //log.error("Ошибка при обходе страницы: {}", path, e);
@@ -178,62 +160,6 @@ public class IndexingService {
                 .orElseThrow();
     }
 
-    public ConcurrentSkipListSet<String> getLinks(Document doc, String url) {
-        Elements links = doc.select("a[href]");
-        ConcurrentSkipListSet<String> newPaths = new ConcurrentSkipListSet<>();
-        for (Element link : links) {
-            String nextUrl = link.attr("abs:href");
-            if (nextUrl.startsWith(url) && isLink(nextUrl) && !isFile(nextUrl)) {
-                String newPath = nextUrl.substring(url.length());
-                newPaths.add(newPath);
-            }
-        }
-        return newPaths;
-    }
-
-    public Document getDocument(String url) throws IOException {
-        return Jsoup.connect(url)
-                .userAgent(userAgent)
-                .referrer(referrer)
-                .timeout(   1000)
-                .get();
-    }
-
-    public PageEntity createPageEntity(SiteEntity attachedSite, Document doc) {
-        String content = doc.html();
-        int status = doc.connection().response().statusCode();
-        String domain = getProtocolAndDomain(attachedSite.getUrl());
-
-        PageEntity page = new PageEntity();
-        page.setSite(attachedSite);
-        page.setPath(attachedSite.getUrl().substring(domain.length()));
-        //page.setPath(path);
-        page.setCode(status);
-        page.setContent(content);
-        return page;
-    }
-
-    private static boolean isLink(String link) {
-        String regex = "(^https:\\/\\/)(?:[^@\\/\\n]+@)?(?:www\\.)?([^:\\/\\n]+)";
-        return link.matches(regex);
-    }
-
-    private static boolean isFile(String link) {
-        link = link.toLowerCase();
-        return link.contains(".jpg")
-                || link.contains(".jpeg")
-                || link.contains(".png")
-                || link.contains(".gif")
-                || link.contains(".webp")
-                || link.contains(".pdf")
-                || link.contains(".eps")
-                || link.contains(".xlsx")
-                || link.contains(".doc")
-                || link.contains(".pptx")
-                || link.contains(".docx")
-                || link.contains("?_ga");
-    }
-
     public boolean indexingStatusCheck(Status status) {
         for (Site site : sites.getSites()) {
             Optional<SiteEntity> savedSite = siteRepository.findByName(site.getName());
@@ -245,7 +171,7 @@ public class IndexingService {
     }
 
     public Response stopIndexing() {
-        Response response = null;
+        Response response;
         if (!indexingStatusCheck(Status.INDEXING)) {
             ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
             log.warn("Индексация не запущена");
