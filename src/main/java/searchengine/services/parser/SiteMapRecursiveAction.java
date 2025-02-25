@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 public class SiteMapRecursiveAction extends RecursiveAction {
 
@@ -25,11 +26,9 @@ public class SiteMapRecursiveAction extends RecursiveAction {
 
     private SiteMap siteMap;
     private static Set<String> linksPool = ConcurrentHashMap.newKeySet();
-    //private static CopyOnWriteArrayList linksPool = new CopyOnWriteArrayList();
 
     private final SiteEntity siteEntity;
     private final PageRepository pageRepository;
-    private static Set<String> newPaths = ConcurrentHashMap.newKeySet();;
 
     public SiteMapRecursiveAction(SiteMap siteMap, SiteEntity siteEntity, PageRepository pageRepository) {
         this.siteMap = siteMap;
@@ -44,33 +43,29 @@ public class SiteMapRecursiveAction extends RecursiveAction {
         Document doc = getDocumentByUrl(siteMap.getUrl());
         savePage(doc);
         Set<String> links = getLinks(doc);
+
+        List<SiteMapRecursiveAction> taskList = new ArrayList<>();
         for (String link : links) {
-            if (!linksPool.contains(link)) {
-                linksPool.add(link);
-                siteMap.addChildren(new SiteMap(link));
+            if (linksPool.add(link)) {
+                SiteMap childSiteMap = new SiteMap(link);
+                siteMap.addChildren(childSiteMap);
+                SiteMapRecursiveAction task = new SiteMapRecursiveAction(childSiteMap, siteEntity, pageRepository);
+                task.fork();
+                taskList.add(task);
             }
         }
 
-        List<SiteMapRecursiveAction> taskList = new ArrayList<>();
-        for (SiteMap child : siteMap.getSiteMapChildrens()) {
-            SiteMapRecursiveAction task = new SiteMapRecursiveAction(child, siteEntity, pageRepository);
-            task.fork();
-            taskList.add(task);
-        }
         for (SiteMapRecursiveAction task : taskList) {
             task.join();
         }
     }
 
     public Set<String> getLinks(Document doc) {
-        Elements elements = doc.select("a[href~=^/?([\\w\\d/-]+)?]");
-        for (Element link : elements) {
-            String checkingUrl = link.attr("abs:href");
-            if (checkingUrl.startsWith(siteMap.getDomain()) && !isFile(checkingUrl)) {
-                newPaths.add(checkingUrl);
-            }
-        }
-        return newPaths;
+        return doc.select("a[href]").stream()
+                .map(link -> link.attr("abs:href"))
+                .filter(url -> url.startsWith(siteMap.getDomain()))
+                .filter(url -> !isFile(url))
+                .collect(Collectors.toCollection(ConcurrentHashMap::newKeySet));
     }
 
     private static boolean isFile(String link) {
@@ -103,10 +98,10 @@ public class SiteMapRecursiveAction extends RecursiveAction {
         return doc;
     }
 
-    public PageEntity savePage(Document doc) {
+    public void savePage(Document doc) {
         if (doc == null) {
             log.warn("Failed to save page");
-            return null;
+            return;
         }
         String content = "";
         try {
@@ -140,7 +135,6 @@ public class SiteMapRecursiveAction extends RecursiveAction {
         log.info("URL: {}", siteMap.getUrl());
         log.info("Path: {}", path);
 
-        return page;
     }
 }
 
