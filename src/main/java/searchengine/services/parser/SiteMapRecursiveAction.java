@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 public class SiteMapRecursiveAction extends RecursiveAction {
@@ -29,15 +30,26 @@ public class SiteMapRecursiveAction extends RecursiveAction {
 
     private final SiteEntity siteEntity;
     private final PageRepository pageRepository;
+    private final AtomicBoolean isStopped;
 
-    public SiteMapRecursiveAction(SiteMap siteMap, SiteEntity siteEntity, PageRepository pageRepository) {
+    private static final Set<String> FILE_EXTENSIONS = Set.of(
+            ".jpg", ".jpeg", "?_ga","pptx","xlsx","eps",".webp",".png", ".gif", ".pdf", ".doc", ".docx"
+    );
+
+    public SiteMapRecursiveAction(SiteMap siteMap, SiteEntity siteEntity, PageRepository pageRepository,
+                                  AtomicBoolean isStopped) {
         this.siteMap = siteMap;
         this.siteEntity = siteEntity;
         this.pageRepository = pageRepository;
+        this.isStopped = isStopped;
     }
 
     @Override
     protected void compute() {
+        if (isStopped.get()) { // Проверка флага в начале
+            log.info("Задача остановлена для: {}", siteMap.getUrl());
+            return;
+        }
         linksPool.add(siteMap.getUrl());
 
         Document doc = getDocumentByUrl(siteMap.getUrl());
@@ -46,18 +58,27 @@ public class SiteMapRecursiveAction extends RecursiveAction {
 
         List<SiteMapRecursiveAction> taskList = new ArrayList<>();
         for (String link : links) {
+            if (isStopped.get()) break;
             if (linksPool.add(link)) {
                 SiteMap childSiteMap = new SiteMap(link);
                 siteMap.addChildren(childSiteMap);
-                SiteMapRecursiveAction task = new SiteMapRecursiveAction(childSiteMap, siteEntity, pageRepository);
+                SiteMapRecursiveAction task = new SiteMapRecursiveAction(childSiteMap, siteEntity, pageRepository, isStopped);
                 task.fork();
                 taskList.add(task);
             }
         }
 
         for (SiteMapRecursiveAction task : taskList) {
-            task.join();
+            if (isStopped.get()) {
+                task.cancel(true); // Отмена незавершенных задач
+            } else {
+                task.join();
+            }
         }
+    }
+
+    public void stopRecursiveAction() {
+        isStopped.set(false);
     }
 
     public Set<String> getLinks(Document doc) {
@@ -69,19 +90,8 @@ public class SiteMapRecursiveAction extends RecursiveAction {
     }
 
     private static boolean isFile(String link) {
-        link = link.toLowerCase();
-        return link.contains(".jpg")
-                || link.contains(".jpeg")
-                || link.contains(".png")
-                || link.contains(".gif")
-                || link.contains(".webp")
-                || link.contains(".pdf")
-                || link.contains(".eps")
-                || link.contains(".xlsx")
-                || link.contains(".doc")
-                || link.contains(".pptx")
-                || link.contains(".docx")
-                || link.contains("?_ga");
+        String lowerUrl = link.toLowerCase();
+        return FILE_EXTENSIONS.stream().anyMatch(lowerUrl::contains);
     }
 
     public Document getDocumentByUrl(String url) {

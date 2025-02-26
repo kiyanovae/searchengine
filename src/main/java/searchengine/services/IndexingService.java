@@ -134,7 +134,7 @@ public class IndexingService {
                     .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
 
             SiteMap siteMap = new SiteMap(attachedSite.getUrl());
-            SiteMapRecursiveAction task = new SiteMapRecursiveAction(siteMap, attachedSite, pageRepository);
+            SiteMapRecursiveAction task = new SiteMapRecursiveAction(siteMap, attachedSite, pageRepository, isStopped);
             new ForkJoinPool().invoke(task);
 
             attachedSite.setStatusTime(Date.from(Instant.now()));
@@ -183,6 +183,8 @@ public class IndexingService {
         updateSiteStatuses(Status.INDEXING,Status.FAILED);
         isStopped.set(true);
         stopForkJoinPool();
+
+
         if (executor != null) {
             executor.shutdownNow();
             log.info(executor.isShutdown() ? "ThreadPoolExecutor успешно остановлен." : "ThreadPoolExecutor не был остановлен.");
