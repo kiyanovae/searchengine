@@ -12,17 +12,20 @@ import searchengine.config.SitesList;
 import searchengine.dto.Response;
 import searchengine.dto.indexing.ErrorResponse;
 import searchengine.dto.indexing.IndexingResponse;
+import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.model.Status;
 import searchengine.services.parser.SiteMap;
 import searchengine.services.parser.SiteMapRecursiveAction;
 
+import javax.persistence.NonUniqueResultException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
@@ -47,12 +50,13 @@ public class IndexingService {
     @Autowired
     private final SitesList sites;
 
-    private ForkJoinPool forkJoinPool = new ForkJoinPool();
+    private ForkJoinPool forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors() * 2);
     List<ForkJoinTask<?>> tasks = new CopyOnWriteArrayList<>();
 
     private ThreadPoolExecutor executor;
 
-    private static AtomicBoolean isStopped = new AtomicBoolean(false);
+    private AtomicBoolean isStopped = new AtomicBoolean(false);
+    private SiteMapRecursiveAction task;
 
     public Response startFullIndexing() {
         Response response;
@@ -64,6 +68,7 @@ public class IndexingService {
                 response = errorResponse;
             } else {
                 log.info("Запущена индексация");
+                forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors() * 2);
                 executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(3);
                 executor.setMaximumPoolSize(Runtime.getRuntime().availableProcessors());
                 executor.execute(this::indexSite);
@@ -76,6 +81,7 @@ public class IndexingService {
 
     public void indexSite() {
         if (isStopped.get()) {
+            task.stopRecursiveAction();
             return;
         }
         List<Site> sitesList = sites.getSites();
@@ -126,6 +132,7 @@ public class IndexingService {
     @Transactional
     private void indexPage(Integer siteId) {
         if (isStopped.get()) {
+            task.stopRecursiveAction();
             return;
         }
         log.info("Запуск обхода страниц для сайта с ID: {}", siteId);
@@ -133,10 +140,12 @@ public class IndexingService {
             SiteEntity attachedSite = siteRepository.findById(siteId)
                     .orElseThrow(() -> new RuntimeException("Сайт с ID " + siteId + " не найден"));
 
-            SiteMap siteMap = new SiteMap(attachedSite.getUrl());
-            SiteMapRecursiveAction task = new SiteMapRecursiveAction(siteMap, attachedSite, pageRepository, isStopped);
-            new ForkJoinPool().invoke(task);
-
+            task = createTask(attachedSite);
+            forkJoinPool.invoke(task);
+            if (!task.getPageBuffer().isEmpty()) {
+                pageRepository.saveAll(task.getPageBuffer());
+                task.getPageBuffer().clear();
+            }
             attachedSite.setStatusTime(Date.from(Instant.now()));
             siteRepository.save(attachedSite);
 
@@ -146,6 +155,14 @@ public class IndexingService {
                 log.error("Ошибка при обходе страницы: ", e);
             }
         }
+    }
+
+    private SiteMapRecursiveAction createTask(SiteEntity attachedSite) {
+        Set<String> linksPool = ConcurrentHashMap.newKeySet();
+        Set<PageEntity> sitePageBuffer = ConcurrentHashMap.newKeySet();
+        SiteMap siteMap = new SiteMap(attachedSite.getUrl());
+        return new SiteMapRecursiveAction(siteMap, attachedSite, pageRepository, isStopped,
+                sitePageBuffer, linksPool);
     }
 
     public static String getProtocolAndDomain(String url) {
@@ -162,10 +179,17 @@ public class IndexingService {
 
     public boolean indexingStatusCheck(Status status) {
         for (Site site : sites.getSites()) {
-            Optional<SiteEntity> savedSite = siteRepository.findByName(site.getName());
-            if (savedSite.isPresent() && savedSite.get().getStatus() == status) {
-                return true;
+            try {
+                Optional<SiteEntity> savedSite = siteRepository.findByName(site.getName());
+                if (savedSite.isPresent() && savedSite.get().getStatus() == status) {
+                    return true;
+                }
+            } catch (Exception e) {
+                List<SiteEntity> savedSite = siteRepository.findAll();
+                savedSite.forEach(siteRepository::delete);
+                return false;
             }
+
         }
         return false;
     }
@@ -183,7 +207,6 @@ public class IndexingService {
         updateSiteStatuses(Status.INDEXING,Status.FAILED);
         isStopped.set(true);
         stopForkJoinPool();
-
 
         if (executor != null) {
             executor.shutdownNow();
@@ -210,7 +233,16 @@ public class IndexingService {
         for (ForkJoinTask<?> task : tasks) {
             task.cancel(true);
         }
-        forkJoinPool.shutdownNow();
+        if (forkJoinPool != null && !forkJoinPool.isShutdown()) {
+            forkJoinPool.shutdownNow();
+            try {
+                if (!forkJoinPool.awaitTermination(3, TimeUnit.SECONDS)) {
+                    log.error("ForkJoinPool не завершился за 3 секунды");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         tasks.clear();
         log.info(forkJoinPool.isShutdown() ? "ForkJoinPool успешно остановлен." : "ForkJoinPool не был остановлен.");
     }

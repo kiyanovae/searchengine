@@ -1,11 +1,11 @@
 package searchengine.services.parser;
 
 
+import lombok.Getter;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import searchengine.model.PageEntity;
@@ -14,6 +14,7 @@ import searchengine.model.SiteEntity;
 import searchengine.services.IndexingService;
 import searchengine.services.PageRepository;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -26,7 +27,9 @@ public class SiteMapRecursiveAction extends RecursiveAction {
     private static final Logger log = LoggerFactory.getLogger(IndexingService.class);
 
     private SiteMap siteMap;
-    private static Set<String> linksPool = ConcurrentHashMap.newKeySet();
+    private final Set<String> linksPool;
+    @Getter
+    private final Set<PageEntity> pageBuffer;
 
     private final SiteEntity siteEntity;
     private final PageRepository pageRepository;
@@ -37,8 +40,10 @@ public class SiteMapRecursiveAction extends RecursiveAction {
     );
 
     public SiteMapRecursiveAction(SiteMap siteMap, SiteEntity siteEntity, PageRepository pageRepository,
-                                  AtomicBoolean isStopped) {
+                                  AtomicBoolean isStopped, Set<PageEntity> pageBuffer, Set<String> linksPool) {
         this.siteMap = siteMap;
+        this.linksPool = linksPool;
+        this.pageBuffer = pageBuffer;
         this.siteEntity = siteEntity;
         this.pageRepository = pageRepository;
         this.isStopped = isStopped;
@@ -46,15 +51,20 @@ public class SiteMapRecursiveAction extends RecursiveAction {
 
     @Override
     protected void compute() {
-        if (isStopped.get()) { // Проверка флага в начале
-            log.info("Задача остановлена для: {}", siteMap.getUrl());
+        if (isStopped.get()) {
+            //log.info("Задача остановлена для: {}", siteMap.getUrl());
             return;
         }
         linksPool.add(siteMap.getUrl());
-
         Document doc = getDocumentByUrl(siteMap.getUrl());
         savePage(doc);
-        Set<String> links = getLinks(doc);
+        Set<String> links;
+        try {
+            links = getLinks(doc);
+        } catch (NullPointerException e) {
+            log.error("failed to get links");
+            return;
+        }
 
         List<SiteMapRecursiveAction> taskList = new ArrayList<>();
         for (String link : links) {
@@ -62,28 +72,31 @@ public class SiteMapRecursiveAction extends RecursiveAction {
             if (linksPool.add(link)) {
                 SiteMap childSiteMap = new SiteMap(link);
                 siteMap.addChildren(childSiteMap);
-                SiteMapRecursiveAction task = new SiteMapRecursiveAction(childSiteMap, siteEntity, pageRepository, isStopped);
+                SiteMapRecursiveAction task = new SiteMapRecursiveAction(childSiteMap, siteEntity, pageRepository,
+                        isStopped,pageBuffer,linksPool);
                 task.fork();
                 taskList.add(task);
             }
         }
+        invokeAll(taskList);
 
-        for (SiteMapRecursiveAction task : taskList) {
-            if (isStopped.get()) {
-                task.cancel(true); // Отмена незавершенных задач
-            } else {
-                task.join();
-            }
-        }
+//        for (SiteMapRecursiveAction task : taskList) {
+//            if (isStopped.get()) {
+//                task.cancel(true); // Отмена незавершенных задач
+//            } else {
+//                task.join();
+//            }
+//        }
     }
 
     public void stopRecursiveAction() {
-        isStopped.set(false);
+        isStopped.set(true);
     }
 
-    public Set<String> getLinks(Document doc) {
+    public Set<String> getLinks(Document doc) throws NullPointerException{
         return doc.select("a[href]").stream()
                 .map(link -> link.attr("abs:href"))
+                .filter(url -> !url.contains("#"))
                 .filter(url -> url.startsWith(siteMap.getDomain()))
                 .filter(url -> !isFile(url))
                 .collect(Collectors.toCollection(ConcurrentHashMap::newKeySet));
@@ -102,8 +115,10 @@ public class SiteMapRecursiveAction extends RecursiveAction {
                     .userAgent("Firefox")
                     .timeout(30 * 1000)
                     .get();
-        } catch (Exception e) {
-            log.error("Ошибка в методе getDocumentByUrl");
+        } catch (IOException e) {
+            log.error("IOException -> failed to get Document");
+        } catch (NullPointerException e) {
+            log.error("doc is null");
         }
         return doc;
     }
@@ -133,17 +148,26 @@ public class SiteMapRecursiveAction extends RecursiveAction {
         }
 
         Integer statusCode = doc.connection().response().statusCode();
+
         PageEntity page = new PageEntity();
         page.setSite(siteEntity);
         page.setPath(path);
         page.setCode(statusCode);
         page.setContent(content);
 
-        pageRepository.save(page);
+        pageBuffer.add(page);
+        synchronized (pageBuffer) {
+            if (pageBuffer.size() >= 100) {
+                pageRepository.saveAll(pageBuffer);
+                pageBuffer.clear();
+                log.info("100 страниц сохранены в БД");
+            }
+        }
 
-        log.info("Domain: {}", siteMap.getDomain());
-        log.info("URL: {}", siteMap.getUrl());
-        log.info("Path: {}", path);
+
+//        log.info("Domain: {}", siteMap.getDomain());
+//        log.info("URL: {}", siteMap.getUrl());
+//        log.info("Path: {}", path);
 
     }
 }
