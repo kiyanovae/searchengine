@@ -55,15 +55,18 @@ public class IndexingService {
 
     private ThreadPoolExecutor executor;
 
-    private AtomicBoolean isStopped = new AtomicBoolean(false);
+    private AtomicBoolean isStopped = new AtomicBoolean(true);
     private SiteMapRecursiveAction task;
+
+    private final String INDEXING_ALREADY_STARTED = "Индексация уже запущена";
+    private final String INDEXING_STOPPED_BY_USER = "Индексация остановлена пользователем";
 
     public Response startFullIndexing() {
         Response response;
         isStopped.set(false);
-            if (indexingStatusCheck(Status.INDEXING)) {
-                ErrorResponse errorResponse = new ErrorResponse("Индексация уже запущена");
-                log.warn("Индексация уже запущена");
+            if (isIndexingStarted()) {
+                ErrorResponse errorResponse = new ErrorResponse(INDEXING_ALREADY_STARTED);
+                log.warn(INDEXING_ALREADY_STARTED);
                 errorResponse.setResult(false);
                 response = errorResponse;
             } else {
@@ -99,6 +102,10 @@ public class IndexingService {
                 forkJoinPool.submit(() -> {
                     indexPage(siteEntity.getId());//запуск задачи
                 }).join();
+                if (isStopped.get()) {
+                    siteEntity.setStatus(Status.FAILED);
+                    return;
+                }
                 siteEntity.setStatus(Status.INDEXED);
                 siteEntity.setStatusTime(Date.from(Instant.now()));
             } catch (Exception e) {
@@ -165,38 +172,19 @@ public class IndexingService {
                 sitePageBuffer, linksPool);
     }
 
-    public static String getProtocolAndDomain(String url) {
-        String regEx = "(^https:\\/\\/)(?:[^@\\/\\n]+@)?(?:www\\.)?([^:\\/\\n]+)";
-        ByteBuffer buffer = StandardCharsets.UTF_8.encode(regEx);
-        String utf8EncodedString = StandardCharsets.UTF_8.decode(buffer).toString();
-        Pattern pattern = Pattern.compile(utf8EncodedString);
-        return pattern.matcher(url)
-                .results()
-                .map(m -> m.group(1) + m.group(2))
-                .findFirst()
-                .orElseThrow();
-    }
-
-    public boolean indexingStatusCheck(Status status) {
-        for (Site site : sites.getSites()) {
-            try {
-                Optional<SiteEntity> savedSite = siteRepository.findByName(site.getName());
-                if (savedSite.isPresent() && savedSite.get().getStatus() == status) {
-                    return true;
-                }
-            } catch (Exception e) {
-                List<SiteEntity> savedSite = siteRepository.findAll();
-                savedSite.forEach(siteRepository::delete);
-                return false;
+    private boolean isIndexingStarted() {
+        List<SiteEntity> savedSites = siteRepository.findAll();
+        for (SiteEntity site : savedSites) {
+            if (site.getStatus().equals(Status.INDEXING)) {
+                return true;
             }
-
         }
         return false;
     }
 
     public Response stopIndexing() {
         Response response;
-        if (!indexingStatusCheck(Status.INDEXING)) {
+        if (!isIndexingStarted()) {
             ErrorResponse errorResponse = new ErrorResponse("Индексация не запущена");
             log.warn("Индексация не запущена");
             errorResponse.setResult(true);
@@ -204,7 +192,7 @@ public class IndexingService {
             return response;
         }
 
-        updateSiteStatuses(Status.INDEXING,Status.FAILED);
+        updateSiteStatuses(Status.INDEXING,Status.FAILED, INDEXING_STOPPED_BY_USER);
         isStopped.set(true);
         stopForkJoinPool();
 
@@ -212,24 +200,25 @@ public class IndexingService {
             executor.shutdownNow();
             log.info(executor.isShutdown() ? "ThreadPoolExecutor успешно остановлен." : "ThreadPoolExecutor не был остановлен.");
         }
-        ErrorResponse successResponse = new ErrorResponse("Индексация остановлена пользователем");
-        log.info("Индексация остановлена пользователем");
+        ErrorResponse successResponse = new ErrorResponse(INDEXING_STOPPED_BY_USER);
+        log.info(INDEXING_STOPPED_BY_USER);
         successResponse.setResult(true);
         response = successResponse;
         return response;
     }
 
     @Transactional
-    private void updateSiteStatuses(Status from,Status to) {
+    private void updateSiteStatuses(Status from,Status to, String note) {
         List<SiteEntity> indexingSites = siteRepository.findByStatus(from);
         for (SiteEntity site : indexingSites) {
             site.setStatus(to);
+            site.setLastError(note);
             site.setStatusTime(Date.from(Instant.now()));
             siteRepository.save(site);
         }
     }
 
-    public void stopForkJoinPool() {
+    private void stopForkJoinPool() {
         for (ForkJoinTask<?> task : tasks) {
             task.cancel(true);
         }
