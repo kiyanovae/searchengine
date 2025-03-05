@@ -2,20 +2,23 @@ package searchengine.model;
 
 import lombok.Data;
 
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import javax.persistence.*;
 
 @Data
-@Table
+@Entity
 public class Page {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
-    private int siteId;
+    @ManyToOne
+    @JoinColumn(name = "site_id", nullable = false)
+    private Site site;
+    @Column(name = "path", nullable = false, columnDefinition = "TEXT")
     private String path;
+    @Column(name = "code", nullable = false)
     private int code;
+    @Lob
+    @Column(name = "content", nullable = false)
     private String content;
 }

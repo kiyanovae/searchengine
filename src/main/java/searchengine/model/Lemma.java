@@ -2,18 +2,20 @@ package searchengine.model;
 
 import lombok.Data;
 
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import javax.persistence.*;
+
 @Data
-@Table
+@Entity
 public class Lemma {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
-    private int siteId;
+    @ManyToOne
+    @JoinColumn(name = "site_id", nullable = false)
+    private Site site;
+    @Column(name = "lemma", nullable = false, length = 255)
     private String lemma;
+    @Column(name = "frequency", nullable = false)
     private int frequency;
 }
