@@ -3,9 +3,13 @@ package searchengine.model;
 import lombok.Data;
 
 import javax.persistence.*;
+import javax.persistence.Index;
 
 @Data
 @Entity
+@Table(name = "page", indexes = {
+        @Index(name = "inx_path", columnList = "path")
+})
 public class Page {
 
     @Id
