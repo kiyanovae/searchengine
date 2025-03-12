@@ -27,7 +27,7 @@ public class Site {
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "site")
     private List<Page> pages = new ArrayList<>();
 
-    private enum Status {
+    public enum Status {
         INDEXING, INDEXED, FAILED
     }
 }

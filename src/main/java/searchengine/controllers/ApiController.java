@@ -1,6 +1,5 @@
 package searchengine.controllers;
 
-import com.sun.xml.bind.v2.TODO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -8,16 +7,19 @@ import org.springframework.web.bind.annotation.*;
 import searchengine.dto.ApiResponse;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.StatisticsService;
+import searchengine.util.WebLinkCrawlerService;
 
 @RestController
 @RequestMapping("/api")
 public class ApiController {
 
     private final StatisticsService statisticsService;
+    private final WebLinkCrawlerService webLinkCrawlerService;
 
     @Autowired
-    public ApiController(StatisticsService statisticsService) {
+    public ApiController(StatisticsService statisticsService, WebLinkCrawlerService webLinkCrawlerService) {
         this.statisticsService = statisticsService;
+        this.webLinkCrawlerService = webLinkCrawlerService;
     }
 
     @GetMapping("/statistics")
@@ -33,6 +35,7 @@ public class ApiController {
         if (param == null) {
             return new ResponseEntity<>(ApiResponse.error("Индексация уже запущена"), HttpStatus.BAD_REQUEST);
         }
+        webLinkCrawlerService.startIndexing();
         return new ResponseEntity<>(ApiResponse.success(), HttpStatus.OK);
     }
 
