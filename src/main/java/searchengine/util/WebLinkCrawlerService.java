@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
 import java.util.regex.Matcher;
@@ -29,6 +31,9 @@ public class WebLinkCrawlerService {
     private final SitesList sitesList;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
 
+    private ExecutorService executorService;
+
+
     public WebLinkCrawlerService(PageRepository pageRepository, SiteRepository siteRepository, SitesList sitesList) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
@@ -37,16 +42,23 @@ public class WebLinkCrawlerService {
 
     public void startIndexing() {
         List<SiteFromConfig> sites = sitesList.getSites();
-        SiteFromConfig siteFromConfig = sites.get(0);
-        Site site = new Site();
-        site.setUrl(siteFromConfig.getUrl());
-        site.setName(siteFromConfig.getName());
-        site.setStatus(searchengine.model.Site.Status.INDEXING);
-        site.setLastError(null);
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.delete(site);
-        siteRepository.save(site);
-        forkJoinPool.invoke(new LinkCrawler(site, site.getUrl()));
+        List<Site> urlsFromConfig = new ArrayList<>();
+        List<LinkCrawler> tasks = new ArrayList<>();
+
+        siteRepository.deleteAll();// если имеются сайты то удалить все потому что запускается новая индексация
+
+        sites.forEach(siteFromConfig -> {
+            Site site = new Site();
+            site.setUrl(siteFromConfig.getUrl());
+            site.setName(siteFromConfig.getName());
+            site.setStatus(searchengine.model.Site.Status.INDEXING);
+            site.setLastError(null);
+            site.setStatusTime(LocalDateTime.now());
+            urlsFromConfig.add(site);
+            tasks.add(new LinkCrawler(site, site.getUrl()));
+        });
+        siteRepository.saveAll(urlsFromConfig);
+        tasks.forEach(forkJoinPool::invoke);
     }
 
 
@@ -68,7 +80,12 @@ public class WebLinkCrawlerService {
             final Page page;
             try {
                 Connection connection = Jsoup.connect(path);
-                Document document = connection.get();
+
+                Document document = connection
+                        .userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
+                        .referrer("http://www.google.com")
+                        .timeout(0)
+                        .get();
                 int statusCode = connection.response().statusCode();
                 String html = document.html();
                 page = new Page();
