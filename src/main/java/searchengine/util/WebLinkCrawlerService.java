@@ -6,6 +6,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import searchengine.config.SiteFromConfig;
 import searchengine.config.SitesList;
@@ -30,7 +31,10 @@ public class WebLinkCrawlerService {
     private final SiteRepository siteRepository;
     private final SitesList sitesList;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
-
+    @Value(value = "${jsoup.user-agent}")
+    private String userAgent;
+    @Value(value = "${jsoup.referrer}")
+    private String referrer;
 
     public WebLinkCrawlerService(PageRepository pageRepository, SiteRepository siteRepository, SitesList sitesList) {
         this.pageRepository = pageRepository;
@@ -60,7 +64,7 @@ public class WebLinkCrawlerService {
         siteRepository.saveAll(siteList);
         tasks.forEach(forkJoinPool::invoke);
         long after = System.currentTimeMillis();
-        log.error("Время выполнения  = {}, мс", (after-before));
+        log.error("Время выполнения  = {}, мс", (after - before));
     }
 
 
@@ -88,11 +92,11 @@ public class WebLinkCrawlerService {
                 }
 
                 Connection connection = Jsoup.connect(site.getUrl() + tempUrl);
-                log.warn("Переходим по ссылке  = {}",(site.getUrl() + tempUrl));
+                log.warn("Переходим по ссылке  = {}", (site.getUrl() + tempUrl));
 
                 Document document = connection
-                        .userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
-                        .referrer("http://www.google.com")
+                        .userAgent(userAgent)
+                        .referrer(referrer)
                         .timeout(0)
                         .get();
 
@@ -103,21 +107,21 @@ public class WebLinkCrawlerService {
                 page.setCode(statusCode);
                 page.setPath(tempUrl);
                 page.setContent(html);
-
                 pageRepository.save(page);
 
-               getLinksForPage(document)
-                       .forEach(link ->
-                               taskList.add(new LinkCrawler(site, link)));
-                invokeAll(taskList);
-                site.setStatus(Site.Status.INDEXED);
+                getLinksForPage(document)
+                        .forEach(link ->
+                            taskList.add(new LinkCrawler(site, link)));
 
+
+                invokeAll(taskList);
+
+                site.setStatus(Site.Status.INDEXED);
             } catch (IOException e) {
                 log.error("Ошибка при обработки страницы: {}", e.getMessage());
                 site.setLastError(e.getMessage());
                 site.setStatus(Site.Status.FAILED);
-                throw new RuntimeException(e);
-            }finally {
+            } finally {
                 siteRepository.save(site);
             }
         }
@@ -135,6 +139,7 @@ public class WebLinkCrawlerService {
                     if (pageRepository.existsByPath(relativeLink)) {
                         continue;
                     }
+                    siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
                     linksList.add(relativeLink);
                 }
             }
