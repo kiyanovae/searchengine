@@ -1,5 +1,6 @@
 package searchengine.util;
 
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -17,13 +18,12 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 public class WebLinkCrawlerService {
     private final PageRepository pageRepository;
@@ -31,34 +31,36 @@ public class WebLinkCrawlerService {
     private final SitesList sitesList;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
 
-    private ExecutorService executorService;
-
 
     public WebLinkCrawlerService(PageRepository pageRepository, SiteRepository siteRepository, SitesList sitesList) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.sitesList = sitesList;
+
     }
 
     public void startIndexing() {
-        List<SiteFromConfig> sites = sitesList.getSites();
-        List<Site> urlsFromConfig = new ArrayList<>();
+        long before = System.currentTimeMillis();
+        List<SiteFromConfig> fromConfigFile = sitesList.getSites();
+        List<Site> siteList = new ArrayList<>();
         List<LinkCrawler> tasks = new ArrayList<>();
 
-        siteRepository.deleteAll();// если имеются сайты то удалить все потому что запускается новая индексация
+        siteRepository.deleteAll();// удалить все потому что запускается новая индексация
 
-        sites.forEach(siteFromConfig -> {
+        fromConfigFile.forEach(siteFromConfig -> {
             Site site = new Site();
             site.setUrl(siteFromConfig.getUrl());
             site.setName(siteFromConfig.getName());
-            site.setStatus(searchengine.model.Site.Status.INDEXING);
+            site.setStatus(Site.Status.INDEXING);
             site.setLastError(null);
             site.setStatusTime(LocalDateTime.now());
-            urlsFromConfig.add(site);
+            siteList.add(site);
             tasks.add(new LinkCrawler(site, site.getUrl()));
         });
-        siteRepository.saveAll(urlsFromConfig);
+        siteRepository.saveAll(siteList);
         tasks.forEach(forkJoinPool::invoke);
+        long after = System.currentTimeMillis();
+        log.error("Время выполнения  = {}, мс", (after-before));
     }
 
 
@@ -73,48 +75,67 @@ public class WebLinkCrawlerService {
 
         @Override
         protected void compute() {
+
             if (pageRepository.existsByPath(path)) {
                 return;
             }
             List<LinkCrawler> taskList = new ArrayList<>();
             final Page page;
             try {
-                Connection connection = Jsoup.connect(path);
+                String tempUrl = path;
+                if (site.getUrl().equals(path)) {
+                    tempUrl = "/";
+                }
+
+                Connection connection = Jsoup.connect(site.getUrl() + tempUrl);
+                log.warn("Переходим по ссылке  = {}",(site.getUrl() + tempUrl));
 
                 Document document = connection
                         .userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
                         .referrer("http://www.google.com")
                         .timeout(0)
                         .get();
+
                 int statusCode = connection.response().statusCode();
                 String html = document.html();
                 page = new Page();
                 page.setSite(site);
                 page.setCode(statusCode);
-                page.setPath(path);
+                page.setPath(tempUrl);
                 page.setContent(html);
+
                 pageRepository.save(page);
-                List<String> linksForPage = getLinksForPage(document);
-                linksForPage.forEach(task -> taskList.add(new LinkCrawler(site, task)));
+
+               getLinksForPage(document)
+                       .forEach(link ->
+                               taskList.add(new LinkCrawler(site, link)));
                 invokeAll(taskList);
+                site.setStatus(Site.Status.INDEXED);
 
             } catch (IOException e) {
-                System.out.println("Что-то пошло не так");
+                log.error("Ошибка при обработки страницы: {}", e.getMessage());
+                site.setLastError(e.getMessage());
+                site.setStatus(Site.Status.FAILED);
                 throw new RuntimeException(e);
+            }finally {
+                siteRepository.save(site);
             }
         }
 
 
         private List<String> getLinksForPage(Document document) {
-            Elements links = document.select("a[href]");
+            Elements links = document.select("a");
             List<String> linksList = new ArrayList<>();
             for (Element link : links) {
-                String href = link.attr("abs:href"); // Получаем абсолютный URL
+                String absLink = link.attr("abs:href"); // Получаем абсолютный URL
+                String relativeLink = link.attr("href");
 
                 // Проверяем, что ссылка принадлежит текущему сайту и еще не посещена
-                if (checkLinkOnCorrectFormat(href) && checkBaseURL(href, link.baseUri()) && !pageRepository.existsByPath(href)) {
-                    System.out.println("Ссылка подходит: " + href);
-                    linksList.add(href);
+                if (checkLinkOnCorrectFormat(absLink) && checkBaseUrl(absLink, link.baseUri()) && !relativeLink.isBlank()) {
+                    if (pageRepository.existsByPath(relativeLink)) {
+                        continue;
+                    }
+                    linksList.add(relativeLink);
                 }
             }
             return linksList;
@@ -122,7 +143,7 @@ public class WebLinkCrawlerService {
 
 
         private static boolean checkLinkOnCorrectFormat(String link) {
-            String regex = "^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?$";
+            String regex = "^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?(?!#.*)$";
             Pattern pattern = Pattern.compile(regex);
             Matcher matcher = pattern.matcher(link);
             if (!matcher.matches()) {
@@ -132,7 +153,7 @@ public class WebLinkCrawlerService {
             return (checkExtension(link));
         }
 
-        private static boolean checkBaseURL(String link, String baseURL) {
+        private static boolean checkBaseUrl(String link, String baseURL) {
             return link.toLowerCase().startsWith(baseURL);
         }
 
@@ -149,3 +170,4 @@ public class WebLinkCrawlerService {
         }
     }
 }
+
