@@ -1,5 +1,6 @@
 package searchengine.controllers;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -7,8 +8,8 @@ import org.springframework.web.bind.annotation.*;
 import searchengine.dto.ApiResponse;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.StatisticsService;
-import searchengine.util.WebLinkCrawlerService;
-
+import searchengine.services.WebLinkCrawlerService;
+@Slf4j
 @RestController
 @RequestMapping("/api")
 public class ApiController {
@@ -47,6 +48,8 @@ public class ApiController {
         if (param == null) {
             return new ResponseEntity<>(ApiResponse.error("Индексация не запущена"), HttpStatus.BAD_REQUEST);
         }
+        webLinkCrawlerService.stopIndexing();
+        log.info("Нажата кнопка остановки индексации");
         return new ResponseEntity<>(ApiResponse.success(), HttpStatus.OK);
     }
 

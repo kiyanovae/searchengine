@@ -1,4 +1,4 @@
-package searchengine.util;
+package searchengine.services;
 
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
@@ -14,6 +14,7 @@ import searchengine.model.Page;
 import searchengine.model.Site;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
+import searchengine.util.SiteConverter;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -21,50 +22,67 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 public class WebLinkCrawlerService {
-    private final PageRepository pageRepository;
-    private final SiteRepository siteRepository;
-    private final SitesList sitesList;
-    private final ForkJoinPool forkJoinPool = new ForkJoinPool();
+
     @Value(value = "${jsoup.user-agent}")
     private String userAgent;
     @Value(value = "${jsoup.referrer}")
     private String referrer;
+    private final PageRepository pageRepository;
+    private final SiteRepository siteRepository;
+    private final SitesList sitesList;
+    private final SiteConverter converter;
+    private final ForkJoinPool forkJoinPool = new ForkJoinPool();
+    private AtomicBoolean stopped = new AtomicBoolean(false);
 
-    public WebLinkCrawlerService(PageRepository pageRepository, SiteRepository siteRepository, SitesList sitesList) {
+
+    public WebLinkCrawlerService(PageRepository pageRepository,
+                                 SiteRepository siteRepository,
+                                 SitesList sitesList,
+                                 SiteConverter converter) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.sitesList = sitesList;
 
+        this.converter = converter;
     }
 
     public void startIndexing() {
+        stopped.set(false);
         long before = System.currentTimeMillis();
         List<SiteFromConfig> fromConfigFile = sitesList.getSites();
-        List<Site> siteList = new ArrayList<>();
+        List<Site> list;
         List<LinkCrawler> tasks = new ArrayList<>();
 
         siteRepository.deleteAll();// удалить все потому что запускается новая индексация
 
-        fromConfigFile.forEach(siteFromConfig -> {
-            Site site = new Site();
-            site.setUrl(siteFromConfig.getUrl());
-            site.setName(siteFromConfig.getName());
-            site.setStatus(Site.Status.INDEXING);
-            site.setLastError(null);
-            site.setStatusTime(LocalDateTime.now());
-            siteList.add(site);
-            tasks.add(new LinkCrawler(site, site.getUrl()));
-        });
-        siteRepository.saveAll(siteList);
+        list = converter.convert(fromConfigFile);
+        list.forEach(site -> tasks.add(new LinkCrawler(site, site.getUrl())));
+
+        log.debug("Прочитали все сайты из конфиг файла и сохранили в List");
+        siteRepository.saveAll(list);
+        log.info("Сохранили все сайты из конфиг файла в БД");
+
+        log.debug("Проходим по каждому сайту и запускаем его индексацию");
         tasks.forEach(forkJoinPool::invoke);
+
+        log.debug("Закончили индексацию каждого сайта");
+        siteRepository.saveAll(list);
+        log.info("Статус сайтов обновлен в БД");
         long after = System.currentTimeMillis();
-        log.error("Время выполнения  = {}, мс", (after - before));
+        log.info("Время выполнения  = {}, мс", (after - before));
+    }
+
+
+    public boolean stopIndexing() {
+        stopped.set(true);
+        return stopped.get();
     }
 
 
@@ -84,6 +102,15 @@ public class WebLinkCrawlerService {
                 return;
             }
             List<LinkCrawler> taskList = new ArrayList<>();
+            if (stopped.get()) {
+                if (!site.getStatus().equals(Site.Status.FAILED)){
+                    site.setStatus(Site.Status.FAILED);
+                    site.setLastError("Индексация остановлена пользователем");
+                    log.info("ИНДЕКСАЦИЯ ОСТАНОВЛЕНА ПОЛЬЗОВАТЕЛЕМ");
+                    log.info("Сохранил Failed");
+                }
+                return;
+            }
             final Page page;
             try {
                 String tempUrl = path;
@@ -92,7 +119,6 @@ public class WebLinkCrawlerService {
                 }
 
                 Connection connection = Jsoup.connect(site.getUrl() + tempUrl);
-                log.warn("Переходим по ссылке  = {}", (site.getUrl() + tempUrl));
 
                 Document document = connection
                         .userAgent(userAgent)
@@ -109,20 +135,18 @@ public class WebLinkCrawlerService {
                 page.setContent(html);
                 pageRepository.save(page);
 
-                getLinksForPage(document)
-                        .forEach(link ->
-                            taskList.add(new LinkCrawler(site, link)));
-
-
+                if (!stopped.get()) {
+                    getLinksForPage(document)
+                            .forEach(link ->
+                                    taskList.add(new LinkCrawler(site, link)));
+                }
                 invokeAll(taskList);
-
                 site.setStatus(Site.Status.INDEXED);
+                log.info("Сохранил INDEXED");
             } catch (IOException e) {
                 log.error("Ошибка при обработки страницы: {}", e.getMessage());
                 site.setLastError(e.getMessage());
                 site.setStatus(Site.Status.FAILED);
-            } finally {
-                siteRepository.save(site);
             }
         }
 
