@@ -32,8 +32,8 @@ public class ApiController {
     Запуск полной индексации
     */
     @GetMapping("/startIndexing")
-    public ResponseEntity<ApiResponse> startIndexing(@RequestParam(value = "param", required = false) String param) {
-        if (param == null) {
+    public ResponseEntity<ApiResponse> startIndexing() {
+        if (!webLinkCrawlerService.stopIndexing()) {
             return new ResponseEntity<>(ApiResponse.error("Индексация уже запущена"), HttpStatus.BAD_REQUEST);
         }
         webLinkCrawlerService.startIndexing();
@@ -44,8 +44,8 @@ public class ApiController {
     Остановка текущей индексации
      */
     @GetMapping("/stopIndexing")
-    public ResponseEntity<ApiResponse> stopIndexing(@RequestParam(value = "param", required = false) String param) {
-        if (param == null) {
+    public ResponseEntity<ApiResponse> stopIndexing() {
+        if (webLinkCrawlerService.stopIndexing()) {
             return new ResponseEntity<>(ApiResponse.error("Индексация не запущена"), HttpStatus.BAD_REQUEST);
         }
         webLinkCrawlerService.stopIndexing();

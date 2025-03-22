@@ -25,6 +25,9 @@ import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import searchengine.model.Site.Status;
+
+import static searchengine.model.Site.Status.*;
 
 @Slf4j
 @Service
@@ -69,10 +72,10 @@ public class WebLinkCrawlerService {
         siteRepository.saveAll(list);
         log.info("Сохранили все сайты из конфиг файла в БД");
 
-        log.debug("Проходим по каждому сайту и запускаем его индексацию");
+        log.info("Проходим по каждому сайту и запускаем его индексацию");
         tasks.forEach(forkJoinPool::invoke);
 
-        log.debug("Закончили индексацию каждого сайта");
+        log.info("Закончили индексацию каждого сайта");
         siteRepository.saveAll(list);
         log.info("Статус сайтов обновлен в БД");
         long after = System.currentTimeMillis();
@@ -102,13 +105,10 @@ public class WebLinkCrawlerService {
                 return;
             }
             List<LinkCrawler> taskList = new ArrayList<>();
-            if (stopped.get()) {
-                if (!site.getStatus().equals(Site.Status.FAILED)){
-                    site.setStatus(Site.Status.FAILED);
+            if (stopped.get() && !site.getStatus().equals(FAILED)) {
+                    site.setStatus(FAILED);
                     site.setLastError("Индексация остановлена пользователем");
-                    log.info("ИНДЕКСАЦИЯ ОСТАНОВЛЕНА ПОЛЬЗОВАТЕЛЕМ");
                     log.info("Сохранил Failed");
-                }
                 return;
             }
             final Page page;
@@ -141,10 +141,16 @@ public class WebLinkCrawlerService {
                                     taskList.add(new LinkCrawler(site, link)));
                 }
                 invokeAll(taskList);
-                site.setStatus(Site.Status.INDEXED);
+                taskList.forEach(task -> {
+                    if (task.isDone()) {
+                        log.info("Данная задача завершена");
+                        log.info("сайт - {}", task.site.getUrl());
+                    }
+                });
+                site.setStatus(INDEXED);
                 log.info("Сохранил INDEXED");
             } catch (IOException e) {
-                log.error("Ошибка при обработки страницы: {}", e.getMessage());
+                log.error("Ошибка при обработке страницы: {}", e.getMessage());
                 site.setLastError(e.getMessage());
                 site.setStatus(Site.Status.FAILED);
             }
