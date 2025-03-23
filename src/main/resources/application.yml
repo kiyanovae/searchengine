@@ -2,10 +2,10 @@
 
 indexing-settings:
   sites:
-    - url: https://www.playback.ru
-      name: Плейбек.ру
-#    - url: https://www.lenta.ru
-#      name: Лента.ру
+#    - url: https://www.playback.ru
+#      name: Плейбек.ру
+    - url: https://www.lenta.ru
+      name: Лента.ру
 #    - url: https://www.skillbox.ru
 #      name: Skillbox
 
@@ -18,7 +18,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create
     show-sql: false
     properties:
       hibernate:
