@@ -22,7 +22,6 @@ public class Page {
     private String path;
     @Column(name = "code", nullable = false)
     private int code;
-    @Lob
-    @Column(name = "content", nullable = false)
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 }
