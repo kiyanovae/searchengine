@@ -83,7 +83,7 @@ public class WebLinkCrawlerService {
         siteRepository.saveAll(list);
         log.info("Статус сайтов обновлен в БД");
         long after = System.currentTimeMillis();
-        log.info("Время выполнения  = {}, сек", (after - before)/1000);
+        log.info("Время выполнения  = {}, сек", (after - before) / 1000);
     }
 
 
@@ -121,6 +121,8 @@ public class WebLinkCrawlerService {
                 if (site.getUrl().equals(path)) {
                     tempUrl = "/";
                 }
+                log.info("Добавляем - {} ", site.getUrl());
+                log.info("Относительный адрес - {} ", tempUrl);
 
                 Connection connection = Jsoup.connect(site.getUrl() + tempUrl);
 
@@ -143,17 +145,17 @@ public class WebLinkCrawlerService {
                     getLinksForPage(document)
                             .forEach(link -> {
                                 taskList.add(new LinkCrawler(site, link));
-                                int i = counterLinks.computeIfAbsent(site.getUrl(), k -> new AtomicInteger(0)).incrementAndGet();
-                                log.info("Добавили новую задачу для сайта {}, количество задач {}", site.getUrl(), i);
+                                counterLinks.computeIfAbsent(site.getUrl(), k -> new AtomicInteger(0)).incrementAndGet();
                             });
 
                 }
                 invokeAll(taskList);
                 AtomicInteger atomicInteger = counterLinks.get(site.getUrl());
-                log.info("Уменьшили  задачу для сайта {}, количество оставшихся задач {}", site.getUrl(), atomicInteger.get());
                 if (atomicInteger.decrementAndGet() == 0) {
                     site.setStatus(INDEXED);
+                    siteRepository.save(site);
                     log.info("Сайт {} проиндексирован, статус обновлен на {}", site.getUrl(), site.getStatus());
+
                 }
             } catch (IOException e) {
                 log.error("Ошибка при обработке страницы: {}", e.getMessage());
@@ -171,16 +173,34 @@ public class WebLinkCrawlerService {
                 String relativeLink = link.attr("href");
 
                 // Проверяем, что ссылка принадлежит текущему сайту и еще не посещена
-                if (checkLinkOnCorrectFormat(absLink) && checkBaseUrl(absLink, link.baseUri()) && !relativeLink.isBlank()) {
-                    if (addedLink.putIfAbsent(relativeLink, true) == null) {
+                if (checkLinkOnCorrectFormat(absLink) && checkBaseUrl(absLink, link.baseUri())) {
+                    String normalizedLink = linkNormalization(relativeLink);
+                    if (addedLink.putIfAbsent(normalizedLink, true) == null) {
                         siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
-                        linksList.add(relativeLink);
+                        linksList.add(normalizedLink);
                     }
                 }
             }
             return linksList;
         }
 
+        private String linkNormalization(String relativeLink) {
+            String baseUrl = site.getUrl();
+            String s = baseUrl.replaceAll("www.", "");
+            String link;
+            if (relativeLink.isBlank()) {
+                link = "/";
+            } else if (relativeLink.startsWith(baseUrl)|| relativeLink.startsWith(s)) {
+                link = relativeLink.substring(baseUrl.length());
+                if (!link.startsWith("/")) {
+                    link = "/".concat(link);
+                }
+            } else {
+                link = relativeLink;
+            }
+            return link;
+
+        }
 
         private static boolean checkLinkOnCorrectFormat(String link) {
             String regex = "^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?(?!#.*)$";
