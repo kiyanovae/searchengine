@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
@@ -47,8 +47,8 @@ public class WebLinkCrawlerService {
     private final SiteConverter converter;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
     private AtomicBoolean stopped = new AtomicBoolean(false);
-    private Map<String, AtomicInteger> urlLinkCounts;
-    private final ConcurrentHashMap<String, Boolean> addedLinks = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, AtomicInteger> counterLinks;
+    private ConcurrentHashMap<String, Boolean> addedLink;
 
     public WebLinkCrawlerService(PageRepository pageRepository,
                                  SiteRepository siteRepository,
@@ -57,12 +57,13 @@ public class WebLinkCrawlerService {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.sitesList = sitesList;
-        urlLinkCounts = new HashMap<>();
         this.converter = converter;
     }
 
     public void startIndexing() {
         stopped.set(false);
+        counterLinks = new ConcurrentHashMap<>();
+        addedLink = new ConcurrentHashMap<>();
         long before = System.currentTimeMillis();
         List<SiteFromConfig> fromConfigFile = sitesList.getSites();
         List<Site> list;
@@ -87,7 +88,7 @@ public class WebLinkCrawlerService {
         siteRepository.saveAll(list);
         log.info("Статус сайтов обновлен в БД");
         long after = System.currentTimeMillis();
-        log.info("Время выполнения  = {}, мс", (after - before));
+        log.info("Время выполнения  = {}, сек", (after - before) / 1000);
     }
 
 
@@ -126,7 +127,6 @@ public class WebLinkCrawlerService {
                 if (site.getUrl().equals(path)) {
                     tempUrl = "/";
                 }
-                log.info("переходим по ссылке - {}", site.getUrl().concat(tempUrl));
                 Connection connection = Jsoup.connect(site.getUrl() + tempUrl);
 
                 Document document = connection
@@ -146,19 +146,20 @@ public class WebLinkCrawlerService {
 
                 if (!stopped.get()) {
                     getLinksForPage(document)
-                            .forEach(link ->
-                                    taskList.add(new LinkCrawler(site, link)));
-                    urlLinkCounts.computeIfAbsent(site.getUrl(), k -> new AtomicInteger(0)).incrementAndGet();
+                            .forEach(link -> {
+                                taskList.add(new LinkCrawler(site, link));
+                                counterLinks.computeIfAbsent(site.getUrl(), k -> new AtomicInteger(0)).incrementAndGet();
+                            });
+
                 }
                 invokeAll(taskList);
-
-                AtomicInteger atomicInteger = urlLinkCounts.get(site.getUrl());
+                AtomicInteger atomicInteger = counterLinks.get(site.getUrl());
                 if (atomicInteger.decrementAndGet() == 0) {
                     site.setStatus(INDEXED);
                     siteRepository.save(site);
-                    log.info("Сайт - {} проиндексирован, статус поменян на {}", site.getUrl(), site.getStatus());
-                }
+                    log.info("Сайт {} проиндексирован, статус обновлен на {}", site.getUrl(), site.getStatus());
 
+                }
             } catch (IOException e) {
 
                 log.error("Ошибка при обработке страницы: {}", e.getMessage());
@@ -175,24 +176,36 @@ public class WebLinkCrawlerService {
             for (Element link : links) {
                 String absLink = link.attr("abs:href"); // Получаем абсолютный URL
                 // Проверяем, что ссылка принадлежит текущему сайту и еще не посещена
-                if (checkLinkOnCorrectFormat(absLink)) {
-                    String relativeLink = getRelativeLink(absLink);
-                    if (addedLinks.putIfAbsent(relativeLink, true) == null) {
-                        log.info("Этой ссылки {} нет в БД", relativeLink);
-                        siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
-                        linksList.add(relativeLink);
-                    }
+                String relativeLink = link.attr("href");
 
-//                        if (!pageRepository.existsByPath(relativeLink)) {
-//                            log.info("Этой ссылки {} нет в БД", relativeLink);
-//                            siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
-//                            linksList.add(relativeLink);
-//                        }
+                if (checkLinkOnCorrectFormat(absLink) && checkBaseUrl(absLink, link.baseUri())) {
+                    String normalizedLink = linkNormalization(relativeLink);
+                    if (addedLink.putIfAbsent(normalizedLink, true) == null) {
+                        siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
+                        linksList.add(normalizedLink);
+                    }
                 }
             }
             return linksList;
         }
 
+        private String linkNormalization(String relativeLink) {
+            String baseUrl = site.getUrl();
+            String s = baseUrl.replaceAll("www.", "");
+            String link;
+            if (relativeLink.isBlank()) {
+                link = "/";
+            } else if (relativeLink.startsWith(baseUrl)|| relativeLink.startsWith(s)) {
+                link = relativeLink.substring(baseUrl.length());
+                if (!link.startsWith("/")) {
+                    link = "/".concat(link);
+                }
+            } else {
+                link = relativeLink;
+            }
+            return link;
+
+        }
 
         private static boolean checkLinkOnCorrectFormat(String link) {
             String regex = "^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?(?!#.*)$";
@@ -204,12 +217,6 @@ public class WebLinkCrawlerService {
             return (checkExtension(link));
         }
 
-        private String getRelativeLink(String absLink) {
-            if (checkBaseUrl(absLink, site.getUrl())) {
-                return absLink.substring(site.getUrl().length());
-            }
-            return "/";
-        }
 
         private static boolean checkBaseUrl(String link, String baseUrl) {
             if (!link.isBlank()) {
