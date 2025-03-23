@@ -19,15 +19,19 @@ import searchengine.util.SiteConverter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import searchengine.model.Site.Status;
 
-import static searchengine.model.Site.Status.*;
+import static searchengine.model.Site.Status.FAILED;
+import static searchengine.model.Site.Status.INDEXED;
 
 @Slf4j
 @Service
@@ -43,7 +47,8 @@ public class WebLinkCrawlerService {
     private final SiteConverter converter;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
     private AtomicBoolean stopped = new AtomicBoolean(false);
-
+    private Map<String, AtomicInteger> urlLinkCounts;
+    private final ConcurrentHashMap<String, Boolean> addedLinks = new ConcurrentHashMap<>();
 
     public WebLinkCrawlerService(PageRepository pageRepository,
                                  SiteRepository siteRepository,
@@ -52,7 +57,7 @@ public class WebLinkCrawlerService {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.sitesList = sitesList;
-
+        urlLinkCounts = new HashMap<>();
         this.converter = converter;
     }
 
@@ -63,10 +68,13 @@ public class WebLinkCrawlerService {
         List<Site> list;
         List<LinkCrawler> tasks = new ArrayList<>();
 
+
         siteRepository.deleteAll();// удалить все потому что запускается новая индексация
 
         list = converter.convert(fromConfigFile);
-        list.forEach(site -> tasks.add(new LinkCrawler(site, site.getUrl())));
+        list.forEach(site ->
+                tasks.add(new LinkCrawler(site, site.getUrl())));
+
 
         log.debug("Прочитали все сайты из конфиг файла и сохранили в List");
         siteRepository.saveAll(list);
@@ -104,11 +112,12 @@ public class WebLinkCrawlerService {
             if (pageRepository.existsByPath(path)) {
                 return;
             }
+
             List<LinkCrawler> taskList = new ArrayList<>();
             if (stopped.get() && !site.getStatus().equals(FAILED)) {
-                    site.setStatus(FAILED);
-                    site.setLastError("Индексация остановлена пользователем");
-                    log.info("Сохранил Failed");
+                site.setStatus(FAILED);
+                site.setLastError("Индексация остановлена пользователем");
+                log.info("Сохранил Failed");
                 return;
             }
             final Page page;
@@ -117,7 +126,7 @@ public class WebLinkCrawlerService {
                 if (site.getUrl().equals(path)) {
                     tempUrl = "/";
                 }
-
+                log.info("переходим по ссылке - {}", site.getUrl().concat(tempUrl));
                 Connection connection = Jsoup.connect(site.getUrl() + tempUrl);
 
                 Document document = connection
@@ -139,20 +148,23 @@ public class WebLinkCrawlerService {
                     getLinksForPage(document)
                             .forEach(link ->
                                     taskList.add(new LinkCrawler(site, link)));
+                    urlLinkCounts.computeIfAbsent(site.getUrl(), k -> new AtomicInteger(0)).incrementAndGet();
                 }
                 invokeAll(taskList);
-                taskList.forEach(task -> {
-                    if (task.isDone()) {
-                        log.info("Данная задача завершена");
-                        log.info("сайт - {}", task.site.getUrl());
-                    }
-                });
-                site.setStatus(INDEXED);
-                log.info("Сохранил INDEXED");
+
+                AtomicInteger atomicInteger = urlLinkCounts.get(site.getUrl());
+                if (atomicInteger.decrementAndGet() == 0) {
+                    site.setStatus(INDEXED);
+                    siteRepository.save(site);
+                    log.info("Сайт - {} проиндексирован, статус поменян на {}", site.getUrl(), site.getStatus());
+                }
+
             } catch (IOException e) {
+
                 log.error("Ошибка при обработке страницы: {}", e.getMessage());
                 site.setLastError(e.getMessage());
                 site.setStatus(Site.Status.FAILED);
+
             }
         }
 
@@ -162,15 +174,20 @@ public class WebLinkCrawlerService {
             List<String> linksList = new ArrayList<>();
             for (Element link : links) {
                 String absLink = link.attr("abs:href"); // Получаем абсолютный URL
-                String relativeLink = link.attr("href");
-
                 // Проверяем, что ссылка принадлежит текущему сайту и еще не посещена
-                if (checkLinkOnCorrectFormat(absLink) && checkBaseUrl(absLink, link.baseUri()) && !relativeLink.isBlank()) {
-                    if (pageRepository.existsByPath(relativeLink)) {
-                        continue;
+                if (checkLinkOnCorrectFormat(absLink)) {
+                    String relativeLink = getRelativeLink(absLink);
+                    if (addedLinks.putIfAbsent(relativeLink, true) == null) {
+                        log.info("Этой ссылки {} нет в БД", relativeLink);
+                        siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
+                        linksList.add(relativeLink);
                     }
-                    siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
-                    linksList.add(relativeLink);
+
+//                        if (!pageRepository.existsByPath(relativeLink)) {
+//                            log.info("Этой ссылки {} нет в БД", relativeLink);
+//                            siteRepository.updateStatusTime(site.getId(), LocalDateTime.now());
+//                            linksList.add(relativeLink);
+//                        }
                 }
             }
             return linksList;
@@ -184,12 +201,21 @@ public class WebLinkCrawlerService {
             if (!matcher.matches()) {
                 return false;
             }
-
             return (checkExtension(link));
         }
 
-        private static boolean checkBaseUrl(String link, String baseURL) {
-            return link.toLowerCase().startsWith(baseURL);
+        private String getRelativeLink(String absLink) {
+            if (checkBaseUrl(absLink, site.getUrl())) {
+                return absLink.substring(site.getUrl().length());
+            }
+            return "/";
+        }
+
+        private static boolean checkBaseUrl(String link, String baseUrl) {
+            if (!link.isBlank()) {
+                return link.toLowerCase().startsWith(baseUrl);
+            }
+            return false;
         }
 
         private static boolean checkExtension(String link) {
