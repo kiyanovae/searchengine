@@ -46,7 +46,7 @@ public class WebLinkCrawlerService {
     private final SitesList sitesList;
     private final SiteConverter converter;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
-    private AtomicBoolean stopped = new AtomicBoolean(false);
+    private AtomicBoolean stopped = new AtomicBoolean(true);
     private ConcurrentHashMap<String, AtomicInteger> counterLinks;
     private ConcurrentHashMap<String, Boolean> addedLink;
 
@@ -88,13 +88,17 @@ public class WebLinkCrawlerService {
         siteRepository.saveAll(list);
         log.info("Статус сайтов обновлен в БД");
         long after = System.currentTimeMillis();
+        stopped.set(true);
         log.info("Время выполнения  = {}, сек", (after - before) / 1000);
     }
 
 
-    public boolean stopIndexing() {
-        stopped.set(true);
+    public boolean getStopped() {
         return stopped.get();
+    }
+
+    public void stopIndexing() {
+        stopped.set(true);
     }
 
 
@@ -195,7 +199,7 @@ public class WebLinkCrawlerService {
             String link;
             if (relativeLink.isBlank()) {
                 link = "/";
-            } else if (relativeLink.startsWith(baseUrl)|| relativeLink.startsWith(s)) {
+            } else if (relativeLink.startsWith(baseUrl) || relativeLink.startsWith(s)) {
                 link = relativeLink.substring(baseUrl.length());
                 if (!link.startsWith("/")) {
                     link = "/".concat(link);
