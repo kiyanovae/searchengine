@@ -33,7 +33,7 @@ public class ApiController {
     */
     @GetMapping("/startIndexing")
     public ResponseEntity<ApiResponse> startIndexing() {
-        if (!webLinkCrawlerService.stopIndexing()) {
+        if (!webLinkCrawlerService.getStopped()) {
             return new ResponseEntity<>(ApiResponse.error("Индексация уже запущена"), HttpStatus.BAD_REQUEST);
         }
         webLinkCrawlerService.startIndexing();
@@ -45,9 +45,10 @@ public class ApiController {
      */
     @GetMapping("/stopIndexing")
     public ResponseEntity<ApiResponse> stopIndexing() {
-        if (webLinkCrawlerService.stopIndexing()) {
+        if (webLinkCrawlerService.getStopped()) {
             return new ResponseEntity<>(ApiResponse.error("Индексация не запущена"), HttpStatus.BAD_REQUEST);
         }
+
         webLinkCrawlerService.stopIndexing();
         log.info("Нажата кнопка остановки индексации");
         return new ResponseEntity<>(ApiResponse.success(), HttpStatus.OK);
