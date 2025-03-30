@@ -3,6 +3,9 @@ package searchengine.services;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
+import org.jsoup.Jsoup;
+import org.jsoup.safety.Cleaner;
+import org.jsoup.safety.Safelist;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -15,6 +18,8 @@ public class LemmaFinder {
     private final LuceneMorphology luceneMorphology;
     private static final String WORD_REGEX = "[^а-яА-Я\\s]";
     private static final String[] EXCLUDED_WORDS = new String[]{"ПРЕДЛ", "СОЮЗ", "МЕЖД"};
+    private Cleaner cleaner = new Cleaner(Safelist.none());
+
 
     public static LemmaFinder getInstance() throws IOException {
         LuceneMorphology morphology = new RussianLuceneMorphology();
@@ -47,6 +52,11 @@ public class LemmaFinder {
 
         }
         return result;
+    }
+
+
+    public String cleanHtmlOfTags(String html) {
+       return cleaner.clean(Jsoup.parse(html)).text();
     }
 
     private boolean containsExcludedWord(List<String> morphInfo) {
