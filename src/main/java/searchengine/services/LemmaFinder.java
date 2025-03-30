@@ -1,0 +1,67 @@
+package searchengine.services;
+
+import lombok.extern.slf4j.Slf4j;
+import org.apache.lucene.morphology.LuceneMorphology;
+import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+@Slf4j
+public class LemmaFinder {
+    private final LuceneMorphology luceneMorphology;
+    private static final String WORD_REGEX = "[^а-яА-Я\\s]";
+    private static final String[] EXCLUDED_WORDS = new String[]{"ПРЕДЛ", "СОЮЗ", "МЕЖД"};
+
+    public static LemmaFinder getInstance() throws IOException {
+        LuceneMorphology morphology = new RussianLuceneMorphology();
+        return new LemmaFinder(morphology);
+    }
+
+    private LemmaFinder(LuceneMorphology luceneMorphology) {
+        this.luceneMorphology = luceneMorphology;
+    }
+
+
+    public Map<String, Integer> collectLemmas(String text) {
+        String[] russianWords = getRussianWords(text);
+        Map<String, Integer> result = new HashMap<>();
+
+        for (String word : russianWords) {
+            if (word.isBlank()) {
+                continue;
+            }
+            List<String> morphInfo = luceneMorphology.getMorphInfo(word);
+            if (containsExcludedWord(morphInfo)) {
+                continue;
+            }
+            List<String> normalForms = luceneMorphology.getNormalForms(word);
+            if (normalForms.isEmpty()) {
+                continue;
+            }
+
+            result.merge(normalForms.get(0), 1, Integer::sum);
+
+        }
+        return result;
+    }
+
+    private boolean containsExcludedWord(List<String> morphInfo) {
+        for (String excludedWord : EXCLUDED_WORDS) {
+            if (morphInfo.get(0).contains(excludedWord)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String[] getRussianWords(String text) {
+        return text.toLowerCase(Locale.ROOT)
+                .replaceAll(WORD_REGEX, " ")
+                .trim()
+                .split("\\s+");
+    }
+}
