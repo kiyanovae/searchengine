@@ -16,8 +16,8 @@ import java.util.Map;
 @Slf4j
 public class LemmaFinder {
     private final LuceneMorphology luceneMorphology;
-    private static final String WORD_REGEX = "[^а-яА-Я\\s]";
-    private static final String[] EXCLUDED_WORDS = new String[]{"ПРЕДЛ", "СОЮЗ", "МЕЖД"};
+    private static final String RUSSIAN_WORD_REGEX = "[^а-яА-Я\\s]";
+    private static final String[] EXCLUDED_WORDS = new String[]{"ПРЕДЛ", "СОЮЗ", "МЕЖД", "|B", "|A","|Z", "|G"};
     private Cleaner cleaner = new Cleaner(Safelist.none());
 
 
@@ -47,9 +47,7 @@ public class LemmaFinder {
             if (normalForms.isEmpty()) {
                 continue;
             }
-
             result.merge(normalForms.get(0), 1, Integer::sum);
-
         }
         return result;
     }
@@ -70,7 +68,7 @@ public class LemmaFinder {
 
     private String[] getRussianWords(String text) {
         return text.toLowerCase(Locale.ROOT)
-                .replaceAll(WORD_REGEX, " ")
+                .replaceAll(RUSSIAN_WORD_REGEX, " ")
                 .trim()
                 .split("\\s+");
     }
