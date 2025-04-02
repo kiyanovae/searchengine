@@ -3,6 +3,7 @@ package searchengine.services;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -10,72 +11,69 @@ import searchengine.model.Site;
 import searchengine.repository.IndexRepository;
 import searchengine.repository.LemmaRepository;
 
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
+@Transactional
 public class LemmaServiceImpl implements LemmaService {
 
     private final LemmaRepository lemmaRepository;
-    private final IndexRepository indexRepositroy;
-    private LemmaFinder lemmaFinder;
-    private Map<String, Integer> wordCount;
+    private final IndexRepository indexRepository;
+    private final HtmlTextProcessor htmlTextProcessor;
+
 
     @Autowired
-    public LemmaServiceImpl(LemmaRepository lemmaRepository, IndexRepository indexRepository) {
+    public LemmaServiceImpl(LemmaRepository lemmaRepository, IndexRepository indexRepository, HtmlTextProcessor htmlTextProcessor) {
         this.lemmaRepository = lemmaRepository;
-        this.indexRepositroy = indexRepository;
+        this.indexRepository = indexRepository;
+        this.htmlTextProcessor = htmlTextProcessor;
     }
-
 
     @Override
     public void saveLemma(Site site, Page page) {
-        try {
-            lemmaFinder = LemmaFinder.getInstance();
-            String textFromHtml = lemmaFinder.cleanHtmlOfTags(page.getContent());
-            wordCount = lemmaFinder.collectLemmas(textFromHtml); // количество слов на данной странице
+        Objects.requireNonNull(site, "Сайт не может быть null");
+        Objects.requireNonNull(page, "Страница не может быть null");
 
-            List<Lemma> lemmasFromDb = (List)lemmaRepository.saveAll(lemmaInstance(site));
-
-            List<Index> indexList = new ArrayList<>();
-
-            for (Lemma lemma : lemmasFromDb) {
-                Index index = new Index();
-                int count = wordCount.get(lemma.getLemma());
-                index.setPage(page);
-                index.setLemma(lemma);
-                index.setRank(count);
-                indexList.add(index);
-            }
-            indexRepositroy.saveAll(indexList);
-
-        } catch (IOException e) {
-            log.error("Ошибка в обработке леммы {}", e.getMessage());
-        } finally {
-            wordCount.clear();
-
-        }
+        Map<String, Integer> lemmas = htmlTextProcessor.extractLemmas(page.getContent());
+        List<Lemma> savedLemmas = savedLemmasToDataBase(site, lemmas);
+        saveIndexes(page, lemmas, savedLemmas);
 
     }
 
-    private List<Lemma> lemmaInstance(Site site) {
-        List<Lemma> result = new ArrayList<>();
+    private void saveIndexes(Page page, Map<String, Integer> lemmas, List<Lemma> savedLemmas) {
+        List<Index> indexes = savedLemmas.stream()
+                .map(lemma -> {
+                    final Index index = new Index();
+                    index.setPage(page);
+                    index.setLemma(lemma);
+                    index.setRank(lemmas.get(lemma.getLemma()));
+                    return index;
+                }).toList();
+        indexRepository.saveAll(indexes);
+    }
 
-        for (Map.Entry<String, Integer> word : wordCount.entrySet()) {
-            Lemma tempLemma = lemmaRepository.findLemmaBySiteAndLemma(site, word.getKey())
-                    .orElseGet(() -> {
-                        final Lemma lemma = new Lemma();
-                        lemma.setSite(site);
-                        lemma.setLemma(word.getKey());
-                        lemma.setFrequency(0);
-                        return lemma;
-                    });
-            tempLemma.setFrequency(tempLemma.getFrequency() + 1);
-            result.add(tempLemma);
-        }
-        return result;
+    private List<Lemma> savedLemmasToDataBase(Site site, Map<String, Integer> lemmas) {
+        List<Lemma> list = lemmas.keySet().stream()
+                .map(lemma -> getOrCreateLemma(site, lemma)).toList();
+        return (List<Lemma>) lemmaRepository.saveAll(list);
+
+    }
+
+    private Lemma getOrCreateLemma(Site site, String lemma) {
+        return lemmaRepository.findLemmaBySiteAndLemma(site, lemma)
+                .map(foundLemma -> {
+                    foundLemma.setFrequency(foundLemma.getFrequency() + 1);
+                    return foundLemma;
+                })
+                .orElseGet(() -> {
+                    final Lemma tempLemma = new Lemma();
+                    tempLemma.setSite(site);
+                    tempLemma.setLemma(lemma);
+                    tempLemma.setFrequency(0);
+                    return tempLemma;
+                });
     }
 }

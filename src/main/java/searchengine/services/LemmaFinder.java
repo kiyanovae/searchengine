@@ -6,6 +6,7 @@ import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Cleaner;
 import org.jsoup.safety.Safelist;
+import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -14,6 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 
 @Slf4j
+@Service
 public class LemmaFinder {
     private final LuceneMorphology luceneMorphology;
     private static final String RUSSIAN_WORD_REGEX = "[^а-яА-Я\\s]";
@@ -21,14 +23,12 @@ public class LemmaFinder {
     private Cleaner cleaner = new Cleaner(Safelist.none());
 
 
-    public static LemmaFinder getInstance() throws IOException {
-        LuceneMorphology morphology = new RussianLuceneMorphology();
-        return new LemmaFinder(morphology);
+
+
+    private LemmaFinder() throws IOException {
+        luceneMorphology = new RussianLuceneMorphology();
     }
 
-    private LemmaFinder(LuceneMorphology luceneMorphology) {
-        this.luceneMorphology = luceneMorphology;
-    }
 
 
     public Map<String, Integer> collectLemmas(String text) {
