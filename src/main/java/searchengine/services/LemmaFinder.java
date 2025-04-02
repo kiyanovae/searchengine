@@ -17,19 +17,14 @@ import java.util.Map;
 @Slf4j
 @Service
 public class LemmaFinder {
-    private final LuceneMorphology luceneMorphology;
     private static final String RUSSIAN_WORD_REGEX = "[^а-яА-Я\\s]";
-    private static final String[] EXCLUDED_WORDS = new String[]{"ПРЕДЛ", "СОЮЗ", "МЕЖД", "|B", "|A","|Z", "|G"};
+    private static final String[] EXCLUDED_WORDS = new String[]{"ПРЕДЛ", "СОЮЗ", "МЕЖД", "|B", "|A", "|Z", "|G"};
+    private final LuceneMorphology luceneMorphology;
     private Cleaner cleaner = new Cleaner(Safelist.none());
-
-
-
 
     private LemmaFinder() throws IOException {
         luceneMorphology = new RussianLuceneMorphology();
     }
-
-
 
     public Map<String, Integer> collectLemmas(String text) {
         String[] russianWords = getRussianWords(text);
@@ -54,7 +49,7 @@ public class LemmaFinder {
 
 
     public String cleanHtmlOfTags(String html) {
-       return cleaner.clean(Jsoup.parse(html)).text();
+        return cleaner.clean(Jsoup.parse(html)).text();
     }
 
     private boolean containsExcludedWord(List<String> morphInfo) {

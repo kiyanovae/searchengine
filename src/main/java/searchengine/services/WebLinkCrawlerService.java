@@ -19,9 +19,7 @@ import searchengine.util.SiteConverter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.RecursiveAction;
@@ -37,15 +35,16 @@ import static searchengine.model.Site.Status.INDEXED;
 @Service
 public class WebLinkCrawlerService {
 
-    @Value(value = "${jsoup.user-agent}")
-    private String userAgent;
-    @Value(value = "${jsoup.referrer}")
-    private String referrer;
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
     private final SitesList sitesList;
     private final SiteConverter converter;
+    private final LemmaService lemmaService;
     private final ForkJoinPool forkJoinPool = new ForkJoinPool();
+    @Value(value = "${jsoup.user-agent}")
+    private String userAgent;
+    @Value(value = "${jsoup.referrer}")
+    private String referrer;
     private AtomicBoolean stopped = new AtomicBoolean(true);
     private ConcurrentHashMap<String, AtomicInteger> counterLinks;
     private ConcurrentHashMap<String, Boolean> addedLink;
@@ -53,11 +52,12 @@ public class WebLinkCrawlerService {
     public WebLinkCrawlerService(PageRepository pageRepository,
                                  SiteRepository siteRepository,
                                  SitesList sitesList,
-                                 SiteConverter converter) {
+                                 SiteConverter converter, LemmaService lemmaService) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.sitesList = sitesList;
         this.converter = converter;
+        this.lemmaService = lemmaService;
     }
 
     public void startIndexing() {
@@ -111,6 +111,35 @@ public class WebLinkCrawlerService {
             this.path = path;
         }
 
+        private static boolean checkLinkOnCorrectFormat(String link) {
+            String regex = "^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?(?!#.*)$";
+            Pattern pattern = Pattern.compile(regex);
+            Matcher matcher = pattern.matcher(link);
+            if (!matcher.matches()) {
+                return false;
+            }
+            return (checkExtension(link));
+        }
+
+        private static boolean checkBaseUrl(String link, String baseUrl) {
+            if (!link.isBlank()) {
+                return link.toLowerCase().startsWith(baseUrl);
+            }
+            return false;
+        }
+
+        private static boolean checkExtension(String link) {
+            String[] excludeFormats = {".jpg", ".jpeg", ".png", ".gif",
+                    ".bmp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar"};
+
+            for (String extension : excludeFormats) {
+                if (link.toLowerCase().endsWith(extension)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         @Override
         protected void compute() {
 
@@ -146,7 +175,8 @@ public class WebLinkCrawlerService {
                 page.setCode(statusCode);
                 page.setPath(tempUrl);
                 page.setContent(html);
-                pageRepository.save(page);
+                Page savedPage = pageRepository.save(page);
+                processPageLemmas(site, savedPage);
 
                 if (!stopped.get()) {
                     getLinksForPage(document)
@@ -173,6 +203,9 @@ public class WebLinkCrawlerService {
             }
         }
 
+        private void processPageLemmas(Site site, Page savedPage) {
+            lemmaService.processPageLemmasAndIndex(site, savedPage);
+        }
 
         private List<String> getLinksForPage(Document document) {
             Elements links = document.select("a");
@@ -209,36 +242,6 @@ public class WebLinkCrawlerService {
             }
             return link;
 
-        }
-
-        private static boolean checkLinkOnCorrectFormat(String link) {
-            String regex = "^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?(?!#.*)$";
-            Pattern pattern = Pattern.compile(regex);
-            Matcher matcher = pattern.matcher(link);
-            if (!matcher.matches()) {
-                return false;
-            }
-            return (checkExtension(link));
-        }
-
-
-        private static boolean checkBaseUrl(String link, String baseUrl) {
-            if (!link.isBlank()) {
-                return link.toLowerCase().startsWith(baseUrl);
-            }
-            return false;
-        }
-
-        private static boolean checkExtension(String link) {
-            String[] excludeFormats = {".jpg", ".jpeg", ".png", ".gif",
-                    ".bmp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar"};
-
-            for (String extension : excludeFormats) {
-                if (link.toLowerCase().endsWith(extension)) {
-                    return false;
-                }
-            }
-            return true;
         }
     }
 }

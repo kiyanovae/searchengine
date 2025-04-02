@@ -3,7 +3,6 @@ package searchengine.services;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -17,12 +16,13 @@ import java.util.Objects;
 
 @Slf4j
 @Service
-@Transactional
+//@Transactional
 public class LemmaServiceImpl implements LemmaService {
 
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private final HtmlTextProcessor htmlTextProcessor;
+    private Object lock = new Object();
 
 
     @Autowired
@@ -33,7 +33,7 @@ public class LemmaServiceImpl implements LemmaService {
     }
 
     @Override
-    public void saveLemma(Site site, Page page) {
+    public void processPageLemmasAndIndex(Site site, Page page) {
         Objects.requireNonNull(site, "Сайт не может быть null");
         Objects.requireNonNull(page, "Страница не может быть null");
 
@@ -55,11 +55,15 @@ public class LemmaServiceImpl implements LemmaService {
         indexRepository.saveAll(indexes);
     }
 
+    /*
+    TODO оптимизировать синхронизацию (для каждого слова)
+     */
     private List<Lemma> savedLemmasToDataBase(Site site, Map<String, Integer> lemmas) {
-        List<Lemma> list = lemmas.keySet().stream()
-                .map(lemma -> getOrCreateLemma(site, lemma)).toList();
-        return (List<Lemma>) lemmaRepository.saveAll(list);
-
+        synchronized (lock) {
+            List<Lemma> list = lemmas.keySet().stream()
+                    .map(lemma -> getOrCreateLemma(site, lemma)).toList();
+            return (List<Lemma>) lemmaRepository.saveAll(list);
+        }
     }
 
     private Lemma getOrCreateLemma(Site site, String lemma) {
@@ -72,7 +76,7 @@ public class LemmaServiceImpl implements LemmaService {
                     final Lemma tempLemma = new Lemma();
                     tempLemma.setSite(site);
                     tempLemma.setLemma(lemma);
-                    tempLemma.setFrequency(0);
+                    tempLemma.setFrequency(1);
                     return tempLemma;
                 });
     }

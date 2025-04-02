@@ -9,11 +9,12 @@ import java.util.Map;
 public class HtmlTextProcessor {
     private final LemmaFinder lemmaFinder;
 
+    @Autowired
     public HtmlTextProcessor(LemmaFinder lemmaFinder) {
         this.lemmaFinder = lemmaFinder;
     }
 
-    @Autowired
+
     public Map<String, Integer> extractLemmas(String textHtml) {
         String text = lemmaFinder.cleanHtmlOfTags(textHtml);
         return lemmaFinder.collectLemmas(text);

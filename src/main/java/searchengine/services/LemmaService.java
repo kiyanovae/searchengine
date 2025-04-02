@@ -5,5 +5,5 @@ import searchengine.model.Site;
 
 public interface LemmaService {
 
-    void saveLemma(Site site, Page page);
+    void processPageLemmasAndIndex(Site site, Page page);
 }
