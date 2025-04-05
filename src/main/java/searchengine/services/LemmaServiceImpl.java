@@ -59,6 +59,7 @@ public class LemmaServiceImpl implements LemmaService {
     TODO оптимизировать синхронизацию (для каждого слова)
      */
     private List<Lemma> savedLemmasToDataBase(Site site, Map<String, Integer> lemmas) {
+
         synchronized (lock) {
             List<Lemma> list = lemmas.keySet().stream()
                     .map(lemma -> getOrCreateLemma(site, lemma)).toList();

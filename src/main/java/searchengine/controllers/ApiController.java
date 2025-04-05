@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import searchengine.dto.ApiResponse;
 import searchengine.dto.statistics.StatisticsResponse;
+import searchengine.exception.PageException;
+import searchengine.services.PageService;
 import searchengine.services.StatisticsService;
 import searchengine.services.WebLinkCrawlerService;
 
@@ -17,11 +19,13 @@ public class ApiController {
 
     private final StatisticsService statisticsService;
     private final WebLinkCrawlerService webLinkCrawlerService;
+    private final PageService pageService;
 
     @Autowired
-    public ApiController(StatisticsService statisticsService, WebLinkCrawlerService webLinkCrawlerService) {
+    public ApiController(StatisticsService statisticsService, WebLinkCrawlerService webLinkCrawlerService, PageService pageService) {
         this.statisticsService = statisticsService;
         this.webLinkCrawlerService = webLinkCrawlerService;
+        this.pageService = pageService;
     }
 
     @GetMapping("/statistics")
@@ -60,11 +64,13 @@ public class ApiController {
      */
     @PostMapping("/indexPage")
     public ResponseEntity<ApiResponse> addOrUpdateIndexPage(@RequestParam(value = "url", required = false) String url) {
-        if (url != null) {
+
+        try {
+            pageService.processPage(url);
             return new ResponseEntity<>(ApiResponse.success(), HttpStatus.CREATED);
+        } catch (PageException e) {
+            return new ResponseEntity<>(ApiResponse.error(e.getMessage()), HttpStatus.BAD_REQUEST);
         }
-        return new ResponseEntity<>(ApiResponse.error("Данная страница находится за пределами сайтов,\n" +
-                                                      "указанных в конфигурационном файле"), HttpStatus.BAD_REQUEST);
     }
 
 

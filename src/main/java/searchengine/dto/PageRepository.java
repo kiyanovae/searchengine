@@ -1,4 +1,4 @@
-package searchengine.repository;
+package searchengine.dto;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;

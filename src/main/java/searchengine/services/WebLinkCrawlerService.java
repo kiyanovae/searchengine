@@ -12,7 +12,7 @@ import searchengine.config.SiteFromConfig;
 import searchengine.config.SitesList;
 import searchengine.model.Page;
 import searchengine.model.Site;
-import searchengine.repository.PageRepository;
+import searchengine.dto.PageRepository;
 import searchengine.repository.SiteRepository;
 import searchengine.util.SiteConverter;
 
