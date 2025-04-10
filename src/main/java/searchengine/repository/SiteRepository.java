@@ -19,4 +19,7 @@ public interface SiteRepository extends CrudRepository<Site, Integer> {
     void updateStatusTime(@Param("siteId") int siteId, @Param("statusTime") LocalDateTime statusTime);
 
     Optional<Site> findSiteByUrl(String url);
+
+    @Query(value = "SELECT COUNT(*) FROM Site")
+    int countSites();
 }

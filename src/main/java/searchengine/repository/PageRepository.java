@@ -1,5 +1,6 @@
-package searchengine.dto;
+package searchengine.repository;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,4 +16,7 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
     boolean existsByPath(@Param("path") String path);
 
     Optional<Page> findByPathAndSite(String path, Site site);
+
+    @Query(value = "SELECT COUNT(*) FROM Page")
+    int countPages();
 }
