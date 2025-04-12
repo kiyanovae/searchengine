@@ -2,6 +2,7 @@ package searchengine.controllers;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +23,8 @@ public class ApiController {
     private final PageService pageService;
 
     @Autowired
-    public ApiController(StatisticsService statisticsService, WebLinkCrawlerService webLinkCrawlerService, PageService pageService) {
+    public ApiController(@Qualifier(value = "extended") StatisticsService statisticsService,
+                         WebLinkCrawlerService webLinkCrawlerService, PageService pageService) {
         this.statisticsService = statisticsService;
         this.webLinkCrawlerService = webLinkCrawlerService;
         this.pageService = pageService;
