@@ -1,5 +1,6 @@
 package searchengine.repository;
 
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
@@ -12,7 +13,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Repository
-public interface SiteRepository extends CrudRepository<Site, Integer> {
+public interface SiteRepository extends JpaRepository<Site, Integer> {
     @Transactional
     @Modifying
     @Query(value = "UPDATE Site s SET s.statusTime=:statusTime WHERE s.id=:siteId")

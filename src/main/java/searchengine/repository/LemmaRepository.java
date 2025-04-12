@@ -13,8 +13,8 @@ import java.util.Optional;
 public interface LemmaRepository extends CrudRepository<Lemma, Integer> {
 
     Optional<Lemma> findLemmaBySiteAndLemma(Site site, String lemma);
-    @Query(value = "select count(DISTINCT l.lemma) from public.Lemmas l", nativeQuery = true)
+    @Query(value = "select count(DISTINCT l.lemma) from public.Lemma l", nativeQuery = true)
     int countAllUniqueLemmas();
-    @Query(value = "select COUNT(DISTINCT l.lemma) from public.Lemmas l where l.site_id=:siteId", nativeQuery = true)
+    @Query(value = "select COUNT(DISTINCT l.lemma) from public.Lemma l where l.site_id=:siteId", nativeQuery = true)
     int countUniqueLemmasBySite(@Param("siteId") int siteId);
 }

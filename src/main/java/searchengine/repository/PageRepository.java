@@ -19,4 +19,6 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 
     @Query(value = "SELECT COUNT(*) FROM Page")
     int countPages();
+
+    int countBySiteId(int siteId);
 }
