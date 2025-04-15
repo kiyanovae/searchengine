@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <!-- Таблица site -->
+    <changeSet author="developer" id="1">
+        <sql>
+            DROP TABLE IF EXISTS site;
+        </sql>
+        <createTable tableName="site">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status_time" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_error" type="TEXT"/>
+            <column name="url" type="VARCHAR(255)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!-- Таблица page -->
+    <changeSet author="developer" id="2">
+        <sql>
+            DROP TABLE IF EXISTS page;
+        </sql>
+        <createTable tableName="page">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="site_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="path" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="code" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="MEDIUMTEXT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Связь между page и site -->
+        <addForeignKeyConstraint
+                baseTableName="page"
+                baseColumnNames="site_id"
+                referencedTableName="site"
+                referencedColumnNames="id"
+                constraintName="fk_page_site"
+                onDelete="CASCADE"/>
+
+        <createIndex indexName="idx_page_site" tableName="page">
+            <column name="site_id"/>
+        </createIndex>
+
+        <addUniqueConstraint
+                tableName="page"
+                columnNames="site_id, path"
+                constraintName="unique_page_site_path"/>
+    </changeSet>
+
+    <!-- Таблица lemma -->
+    <changeSet author="developer" id="3">
+        <sql>
+            DROP TABLE IF EXISTS lemma;
+        </sql>
+        <createTable tableName="lemma">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="site_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="lemma" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="frequency" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Уникальный индекс для Lemma + site_Id -->
+        <addUniqueConstraint
+                tableName="lemma"
+                columnNames="lemma, site_id"
+                constraintName="unique_lemma_site"/>
+
+        <!-- Связь между lemma и site -->
+        <addForeignKeyConstraint
+                baseTableName="lemma"
+                baseColumnNames="site_id"
+                referencedTableName="site"
+                referencedColumnNames="id"
+                constraintName="fk_lemma_site"
+                onDelete="CASCADE"/>
+
+        <createIndex indexName="idx_lemma_site" tableName="lemma">
+            <column name="site_id"/>
+        </createIndex>
+
+        <createIndex indexName="idx_lemma_id" tableName="lemma">
+            <column name="id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- Таблица index_data -->
+    <changeSet author="developer" id="4">
+        <sql>
+            DROP TABLE IF EXISTS index_data;
+        </sql>
+        <createTable tableName="index_data">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="page_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="lemma_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rank" type="FLOAT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Связь между index_data и page -->
+        <addForeignKeyConstraint
+                baseTableName="index_data"
+                baseColumnNames="page_id"
+                referencedTableName="page"
+                referencedColumnNames="id"
+                constraintName="fk_index_page"
+                onDelete="CASCADE"/>
+
+        <!-- Связь между index_data и lemma -->
+        <addForeignKeyConstraint
+                baseTableName="index_data"
+                baseColumnNames="lemma_id"
+                referencedTableName="lemma"
+                referencedColumnNames="id"
+                constraintName="fk_index_lemma"
+                onDelete="CASCADE"/>
+
+        <createIndex indexName="idx_index_page" tableName="index_data">
+            <column name="page_id"/>
+        </createIndex>
+
+        <createIndex indexName="idx_index_lemma" tableName="index_data">
+            <column name="lemma_id"/>
+        </createIndex>
+
+        <addUniqueConstraint
+                tableName="index_data"
+                columnNames="page_id, lemma_id"
+                constraintName="unique_index_page_lemma"/>
+    </changeSet>
+    <changeSet author="developer" id="5">
+        <sql>
+            CREATE TRIGGER delete_unused_lemmas AFTER DELETE ON index_data
+            FOR EACH ROW
+            BEGIN
+            DELETE FROM lemma
+            WHERE id = OLD.lemma_id
+            AND NOT EXISTS (
+            SELECT 1 FROM index_data WHERE lemma_id = OLD.lemma_id
+            );
+            END;
+        </sql>
+    </changeSet>
+</databaseChangeLog>

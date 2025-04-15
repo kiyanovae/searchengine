@@ -9,3 +9,5 @@ public class Application {
         SpringApplication.run(Application.class, args);
     }
 }
+
+//TODO Установить в PreDestroy сброс маркеров потоков для остановки рекурсии.

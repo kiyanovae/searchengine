@@ -130,7 +130,7 @@
                     <div class="form-selectWrap">
                       <!-- - var options = setOptions(items, ['value', 'selected', 'disabled']);-->
                       <select class="form-select" name="site">
-                        <option value="" selected="selected">All sites
+                        <option value="ALL" selected="selected">ALL sites
                         </option>
                       </select>
                     </div>
@@ -159,4 +159,27 @@
     </div>
   </div>
   <script src="/assets/plg/jQuery/jquery-3.5.1.min.js"></script>
+  <script>
+    /*<![CDATA[*/
+    const socket = new WebSocket('ws://' + window.location.host + '/statistics-updates');
+
+    socket.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        console.log('Получены данные статистики: ', data);
+
+        // Обновляем статистику на странице
+        document.getElementById('totalSites').innerText = data.statistics.total.sites;
+        document.getElementById('totalPages').innerText = data.statistics.total.pages;
+        document.getElementById('totalLemmas').innerText = data.statistics.total.lemmas;
+    };
+
+    socket.onopen = function () {
+        console.log('Подключение к WebSocket установлено');
+    };
+
+    socket.onclose = function () {
+        console.log('Подключение к WebSocket закрыто');
+    };
+    /*]]>*/
+</script>
 </body></html>
