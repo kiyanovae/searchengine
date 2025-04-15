@@ -1,6 +1,8 @@
 package searchengine.model;
 
 import lombok.Data;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import javax.persistence.*;
 
@@ -15,10 +17,12 @@ public class Index {
 
     @ManyToOne
     @JoinColumn(name = "page_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Page page;
 
     @ManyToOne
     @JoinColumn(name = "lemma_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Lemma lemma;
 
     @Column(name = "rank", nullable = false)

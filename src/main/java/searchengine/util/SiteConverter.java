@@ -8,6 +8,7 @@ import searchengine.model.Site;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
+
 @Component
 public class SiteConverter implements Converter<List<SiteFromConfig>, List<Site>> {
     @Override
