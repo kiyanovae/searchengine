@@ -1,0 +1,26 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    username: root
+    password: Kiyanova17!!!
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+    charset: utf8mb4
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+
+indexing-settings:
+  sites:
+#     - url: https://sendel.ru/
+#       name: Sendel.ru
+     - url: https://www.ipfran.ru/
+       name: ИПФ РАН
+     - url: https://dimonvideo.ru/
+       name: ДимонВидео
