@@ -32,16 +32,7 @@ public class IndexPageService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
 
-    public ResponseEntity indexPage(String url) throws IOException {
-        Document document;
-        try {
-            document = Jsoup.connect(url).
-                    userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
-                    .referrer("http://www.google.com").get();
-        } catch (IOException e) {
-            e.getMessage();
-            return ResponseEntity.status(500).body(new ResponseWithError(false, "Указанная страница не найдена"));
-        }
+    public void indexPage(String url) throws IOException {
 
         String siteFromUrl = url;
         String http = siteFromUrl.substring(0, siteFromUrl.indexOf("://") + 3);
@@ -64,8 +55,27 @@ public class IndexPageService {
             }
         }
         if (site == null) {
-            return ResponseEntity.status(400).body(new ResponseWithError(false, "Данная страница находится за пределами сайтов, \n" +
-                    "указанных в конфигурационном файле"));
+            Page page=new Page();
+            page.setPath(url);
+            page.setCode(400);
+            page.setContent("Данная страница находится за пределами сайтов, \n" +
+                    "указанных в конфигурационном файле");
+            pageRepository.save(page);
+            return;
+        }
+
+        Document document;
+        try {
+            document = Jsoup.connect(url).
+                    userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
+                    .referrer("http://www.google.com").get();
+        } catch (IOException e) {
+            Page page=new Page();
+            page.setPath(url.substring(site.getUrl().length() - 1));
+            page.setCode(500);
+            page.setSite(site);
+            e.getMessage();
+            return;
         }
 
         String path = url.substring(site.getUrl().length() - 1);
@@ -83,7 +93,6 @@ public class IndexPageService {
         pageRepository.save(page);
         FillingLemmaAndIndex fillingLemmaAndIndex = new FillingLemmaAndIndex(indexRepository, lemmaRepository);
         fillingLemmaAndIndex.fillingLemmaIndex(page, true);
-        return ResponseEntity.ok(new ResponseWithoutError(true));
     }
 
 

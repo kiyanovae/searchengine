@@ -14,4 +14,6 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 
     List<Page> findAllBySite (SiteTable site);
 
+    List<Page> findAllByCode(int code);
+
 }

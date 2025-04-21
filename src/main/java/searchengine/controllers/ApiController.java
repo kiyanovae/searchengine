@@ -25,6 +25,7 @@ public class ApiController {
     private final IndexPageService indexPageService;
     private final SearchService searchService;
     private boolean checkStartFlag = false;
+    private int code;
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
@@ -52,11 +53,15 @@ public class ApiController {
 
     @PostMapping("/indexPage")
     public ResponseEntity indexPage(@RequestParam String url){
-        try {
-            return indexPageService.indexPage(url);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        Runnable thread= () -> {
+            try {
+                indexPageService.indexPage(url);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        };
+        new Thread(thread).start();
+     return ResponseEntity.ok(new ResponseWithoutError(true));
     }
     @GetMapping("/search")
     public ResponseEntity search(@RequestParam(name = "query") String query,

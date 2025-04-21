@@ -115,7 +115,8 @@ public class StartIndexingService {
                 }
                 siteRepository.delete(siteRepository.findByUrl(site.getUrl()));
             }
-
         }
+        List< Page> pageListWithError=pageRepository.findAllByCode(400);
+        pageRepository.deleteAll(pageListWithError);
     }
 }

@@ -68,8 +68,14 @@ public class FillingTablePage extends RecursiveAction {
                     pageIndexing.join();
                 } else break;
             }
-        } catch (RuntimeException | IOException | InterruptedException e) {
+        } catch (RuntimeException | InterruptedException e) {
             e.getMessage();
+        } catch (IOException e){
+            Page page=new Page();
+            page.setPath(url.substring(site.getUrl().length() - 1));
+            page.setCode(500);
+            page.setSite(site);
+            pageRepository.save(page);
         }
     }
 }

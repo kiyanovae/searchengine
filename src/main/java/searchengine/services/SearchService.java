@@ -84,7 +84,6 @@ public class SearchService {
 
         for (QueryResponseDataItems dataItems : queryResponseList) {
             if (i >= offset && i < offset + limit) {
-                System.out.println(dataItems.getRelevance() + "  " + dataItems.getTitle());
                 listToData.add(dataItems);
             }
             i++;
