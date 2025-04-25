@@ -2,6 +2,7 @@ package searchengine.controllers;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.bind.annotation.*;
 import searchengine.dto.statistics.ResponseWithError;
 import searchengine.dto.statistics.QueryResponse;
@@ -14,6 +15,7 @@ import searchengine.services.StatisticsService;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
 @RequestMapping("/api")
@@ -24,8 +26,8 @@ public class ApiController {
     private final StartIndexingService service;
     private final IndexPageService indexPageService;
     private final SearchService searchService;
-    private boolean checkStartFlag = false;
-    private int code;
+    public static AtomicBoolean checkStartFlag=new AtomicBoolean(false);
+
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
@@ -33,19 +35,17 @@ public class ApiController {
     }
     @GetMapping("/startIndexing")
     public ResponseEntity startIndexing() {
-        Runnable start= () -> service.startIndexing();
-        new Thread(start).start();
-        if (!checkStartFlag) {
-            checkStartFlag = true;
+        if (!checkStartFlag.get()) {
+            service.startIndexing();
+            checkStartFlag.set(true);
             return ResponseEntity.ok(new ResponseWithoutError(true));
         } else return ResponseEntity.status(404).body(new ResponseWithError(false,"Индексация уже запущена"));
 
     }
     @GetMapping("/stopIndexing")
     public ResponseEntity stopIndexing(){
-        if (checkStartFlag){
-            service.stopIndexing();
-            checkStartFlag = false;
+        if (checkStartFlag.get()){
+            checkStartFlag.set(false);
             return ResponseEntity.ok(new ResponseWithError(true,"")) ;
         }
         return ResponseEntity.status(400).body(new ResponseWithError(false,"Индексация не запущена")) ;
@@ -53,14 +53,11 @@ public class ApiController {
 
     @PostMapping("/indexPage")
     public ResponseEntity indexPage(@RequestParam String url){
-        Runnable thread= () -> {
             try {
                 indexPageService.indexPage(url);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        };
-        new Thread(thread).start();
      return ResponseEntity.ok(new ResponseWithoutError(true));
     }
     @GetMapping("/search")

@@ -3,10 +3,14 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
+import searchengine.controllers.ApiController;
 import searchengine.logicClasses.DeleteLemma;
+import searchengine.logicClasses.FillingLemmaAndIndex;
 import searchengine.logicClasses.FillingTablePage;
 import searchengine.model.Page;
 import searchengine.model.SiteStatus;
@@ -19,9 +23,9 @@ import searchengine.repository.SiteRepository;
 import java.io.IOException;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.*;
 
-
+@EnableAsync
 @Service
 @RequiredArgsConstructor
 
@@ -31,19 +35,20 @@ public class StartIndexingService {
     private final PageRepository pageRepository;
     private final IndexRepository indexRepository;
     private final LemmaRepository lemmaRepository;
-    public static boolean flag = true;
+    private final FillingLemmaAndIndex fillingLemmaAndIndex;
+    private final DeleteLemma delete;
 
+    @Async
     public void startIndexing() {
-
-        flag = true;
 
         tableClearing();
 
+        ExecutorService service= Executors.newFixedThreadPool(sites.getSites().size());
         for (Site sites : sites.getSites()) {
-            Thread thread = new Thread(() -> {
+            service.execute(() -> {
                 SiteTable siteTable = new SiteTable();
                 try {
-                    Document document = Jsoup.connect(sites.getUrl()).
+                    Jsoup.connect(sites.getUrl()).
                             userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
                             .referrer("http://www.google.com").get();
                 } catch (IOException e) {
@@ -63,25 +68,17 @@ public class StartIndexingService {
                     siteTable.setStatusTime(new Date());
                     siteRepository.save(siteTable);
 
-                    Thread dateThread = new Thread(() -> {
-                        while (!Thread.currentThread().isInterrupted()) {
-                            try {
-                                Thread.sleep(2000);
-                                siteTable.setStatusTime(new Date());
-                            } catch (InterruptedException e) {
-                                e.getMessage();
-                                break;
-                            }
-                            siteRepository.save(siteTable);
-                        }
-                    });
-                    dateThread.start();
+                    ScheduledExecutorService time = Executors.newSingleThreadScheduledExecutor();
+                    time.scheduleAtFixedRate(() -> {
+                        siteTable.setStatusTime(new Date());
+                        siteRepository.save(siteTable);
+                    }, 0, 1, TimeUnit.SECONDS);
 
                     ForkJoinPool pool = new ForkJoinPool();
-                    FillingTablePage page = new FillingTablePage(sites.getUrl(), siteTable, pageRepository, indexRepository, lemmaRepository);
+                    FillingTablePage page = new FillingTablePage(sites.getUrl(), siteTable, pageRepository, indexRepository, lemmaRepository, fillingLemmaAndIndex);
                     pool.invoke(page);
 
-                    if (flag) {
+                    if (ApiController.checkStartFlag.get()) {
                         siteTable.setStatus(SiteStatus.INDEXED);
                         siteRepository.save(siteTable);
                     } else {
@@ -89,31 +86,28 @@ public class StartIndexingService {
                         siteTable.setLastError("Индексация остановлена пользователем");
                         siteRepository.save(siteTable);
                     }
-                    dateThread.interrupt();
+                    time.shutdown();
+
                 }
             });
-            thread.start();
         }
-        flag = true;
-    }
-
-    public void stopIndexing() {
-        flag = false;
     }
 
     private void tableClearing() {
+        ExecutorService service= Executors.newFixedThreadPool(sites.getSites().size());
         for (Site site : sites.getSites()) {
-            if (siteRepository.findByUrl(site.getUrl()) != null) {
-                List<Page> pageList = pageRepository.findAllBySite(siteRepository.findByUrl(site.getUrl()));
-                if (!pageList.isEmpty()) {
-                    for (Page page : pageList) {
-                        ForkJoinPool pool = new ForkJoinPool();
-                        DeleteLemma delete = new DeleteLemma(indexRepository, lemmaRepository, page);
-                        pool.invoke(delete);
-                        pageRepository.delete(page);
+            SiteTable detectedSite=siteRepository.findByUrl(site.getUrl());
+            if (detectedSite != null) {
+                service.execute(() -> {
+                    List<Page> pageList = pageRepository.findAllBySiteId(detectedSite.getId());
+                    if (!pageList.isEmpty()) {
+                        for (Page page : pageList) {
+                            delete.deleteLemmaAndIndex(page);
+                            pageRepository.delete(page);
+                        }
                     }
-                }
-                siteRepository.delete(siteRepository.findByUrl(site.getUrl()));
+                    siteRepository.delete(detectedSite);
+                });
             }
         }
         List< Page> pageListWithError=pageRepository.findAllByCode(400);

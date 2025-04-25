@@ -18,8 +18,8 @@ spring:
 
 indexing-settings:
   sites:
-#     - url: https://sendel.ru/
-#       name: Sendel.ru
+     - url: https://sendel.ru/
+       name: Sendel.ru
      - url: https://www.ipfran.ru/
        name: ИПФ РАН
      - url: https://dimonvideo.ru/

@@ -1,6 +1,7 @@
 package searchengine.logicClasses;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 import searchengine.model.IndexTable;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -11,7 +12,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-
+@Component
 @RequiredArgsConstructor
 public class FillingLemmaAndIndex {
     private final IndexRepository indexRepository;

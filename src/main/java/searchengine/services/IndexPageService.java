@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
@@ -22,6 +24,7 @@ import searchengine.repository.SiteRepository;
 import java.io.IOException;
 import java.util.Date;
 import java.util.concurrent.ForkJoinPool;
+@EnableAsync
 
 @Service
 @RequiredArgsConstructor
@@ -29,9 +32,10 @@ public class IndexPageService {
     private final SitesList sites;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
-    private final LemmaRepository lemmaRepository;
-    private final IndexRepository indexRepository;
+    private final DeleteLemma delete;
+    private final FillingLemmaAndIndex fillingLemmaAndIndex;
 
+    @Async
     public void indexPage(String url) throws IOException {
 
         String siteFromUrl = url;
@@ -82,7 +86,8 @@ public class IndexPageService {
 
         Page detectedPage = pageRepository.findByPath(path);
         if (detectedPage != null) {
-            deletePageLemmaIndex(detectedPage);
+            delete.deleteLemmaAndIndex(detectedPage);
+            pageRepository.delete(detectedPage);
         }
 
         Page page = new Page();
@@ -91,17 +96,10 @@ public class IndexPageService {
         page.setCode(200);
         page.setContent(String.valueOf(document));
         pageRepository.save(page);
-        FillingLemmaAndIndex fillingLemmaAndIndex = new FillingLemmaAndIndex(indexRepository, lemmaRepository);
-        fillingLemmaAndIndex.fillingLemmaIndex(page, true);
+
+        fillingLemmaAndIndex.fillingLemmaIndex(page,true);
+
     }
 
-
-
-    public void deletePageLemmaIndex(Page page) {
-        ForkJoinPool pool = new ForkJoinPool();
-        DeleteLemma delete = new DeleteLemma(indexRepository, lemmaRepository, page);
-        pool.invoke(delete);
-        pageRepository.delete(page);
-    }
 
 }

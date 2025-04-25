@@ -12,7 +12,7 @@ import java.util.List;
 public interface PageRepository extends JpaRepository<Page, Integer> {
     Page findByPath(String path);
 
-    List<Page> findAllBySite (SiteTable site);
+    List<Page> findAllBySiteId (int siteId);
 
     List<Page> findAllByCode(int code);
 

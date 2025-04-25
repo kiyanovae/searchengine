@@ -5,14 +5,17 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import searchengine.controllers.ApiController;
 import searchengine.model.Page;
+import searchengine.model.SiteStatus;
 import searchengine.model.SiteTable;
 import searchengine.repository.IndexRepository;
 import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
-import searchengine.services.StartIndexingService;
+
 
 import java.io.IOException;
+
 import java.util.concurrent.RecursiveAction;
 
 @RequiredArgsConstructor
@@ -22,13 +25,15 @@ public class FillingTablePage extends RecursiveAction {
     private SiteTable site;
     private final IndexRepository indexRepository;
     private final LemmaRepository lemmaRepository;
+    private final FillingLemmaAndIndex fillingLemmaAndIndex;
 
-    public FillingTablePage(String url, SiteTable site, PageRepository pageRepository, IndexRepository indexRepository, LemmaRepository lemmaRepository) {
+    public FillingTablePage(String url, SiteTable site, PageRepository pageRepository, IndexRepository indexRepository, LemmaRepository lemmaRepository,FillingLemmaAndIndex fillingLemmaAndIndex) {
         this.url = url;
         this.site = site;
         this.pageRepository = pageRepository;
         this.indexRepository = indexRepository;
         this.lemmaRepository = lemmaRepository;
+        this.fillingLemmaAndIndex=fillingLemmaAndIndex;
     }
 
     @Override
@@ -47,8 +52,7 @@ public class FillingTablePage extends RecursiveAction {
             page.setContent(String.valueOf(document));
             pageRepository.save(page);
 
-            FillingLemmaAndIndex fillingLemmaAndIndex = new FillingLemmaAndIndex(indexRepository, lemmaRepository);
-            fillingLemmaAndIndex.fillingLemmaIndex(page, StartIndexingService.flag);
+            fillingLemmaAndIndex.fillingLemmaIndex(page, ApiController.checkStartFlag.get());
 
             Elements elements = document.select("a");
             for (Element e : elements) {
@@ -62,8 +66,8 @@ public class FillingTablePage extends RecursiveAction {
                     continue;
                 }
 
-                if (StartIndexingService.flag) {
-                    FillingTablePage pageIndexing = new FillingTablePage(newHref, site, pageRepository, indexRepository, lemmaRepository);
+                if (ApiController.checkStartFlag.get()) {
+                    FillingTablePage pageIndexing = new FillingTablePage(newHref, site, pageRepository, indexRepository, lemmaRepository, fillingLemmaAndIndex);
                     pageIndexing.fork();
                     pageIndexing.join();
                 } else break;
@@ -76,6 +80,7 @@ public class FillingTablePage extends RecursiveAction {
             page.setCode(500);
             page.setSite(site);
             pageRepository.save(page);
+
         }
     }
 }

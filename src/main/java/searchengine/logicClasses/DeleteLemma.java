@@ -1,6 +1,7 @@
 package searchengine.logicClasses;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 import searchengine.model.IndexTable;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -10,15 +11,13 @@ import searchengine.repository.LemmaRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.RecursiveAction;
-
+@Component
 @RequiredArgsConstructor
-public class DeleteLemma extends RecursiveAction {
+public class DeleteLemma {
     private final IndexRepository indexRepository;
     private final LemmaRepository lemmaRepository;
-    private final Page page;
 
-    @Override
-    protected void compute() {
+    public void deleteLemmaAndIndex(Page page) {
         List<IndexTable> list = indexRepository.findAllByPageId(page.getId());
         List<Lemma> lemmaDeleteList = new ArrayList<>();
         List<Lemma> lemmaSaveList = new ArrayList<>();

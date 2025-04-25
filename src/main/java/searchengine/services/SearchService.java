@@ -29,59 +29,48 @@ public class SearchService {
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
 
-    private String firstLemma;
-    private float firstRelevance;
-    private String lastQuery;
-    private String lastSite;
-    private LinkedHashSet<QueryResponseDataItems> listOfLastQuery = new LinkedHashSet<>();
-
-
     public QueryResponse search(String query, String site, int offset, int limit) throws IOException {
         LinkedHashSet<QueryResponseDataItems> queryResponseList = new LinkedHashSet<>();
-        if (!query.equals(lastQuery) || !site.equals(lastSite)) {
-            HashMap<String, Integer> map = Lemmatization.lemmatization(query);
-            int totalPageCount = (int) pageRepository.count();
-            HashMap<String, Integer> rareLemma = new HashMap<>();
-            List<Lemma> lemmaList = new ArrayList<>();
-            for (String lemma : map.keySet()) {
-                int countPage = 0;
-                lemmaList = lemmaRepository.findAllByLemma(lemma);
-                for (Lemma l : lemmaList) {
-                    countPage = countPage + l.getFrequency();
-                }
-
-                if ((double) countPage / totalPageCount <= 0.6) {
-                    rareLemma.put(lemma, countPage);
-                }
-            }
-            lemmaList.clear();
-            Map<String, Integer> sortedMap = rareLemma.entrySet()
-                    .stream()
-                    .sorted(Map.Entry.comparingByValue())
-                    .collect(Collectors.toMap(
-                            Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
-
-
-            sortedMap.entrySet().stream().findFirst().ifPresent(entry -> firstLemma = entry.getKey());
-
-            LinkedHashSet<String> linkedLemma = new LinkedHashSet<>(sortedMap.keySet());
-            int siteId = 0;
-
-            if (!site.isEmpty()) {
-                siteId = siteRepository.findByUrl(site).getId();
+        HashMap<String, Integer> map = Lemmatization.lemmatization(query);
+        int totalPageCount = (int) pageRepository.count();
+        HashMap<String, Integer> rareLemma = new HashMap<>();
+        List<Lemma> lemmaList = new ArrayList<>();
+        for (String lemma : map.keySet()) {
+            int countPage = 0;
+            lemmaList = lemmaRepository.findAllByLemma(lemma);
+            for (Lemma l : lemmaList) {
+                countPage = countPage + l.getFrequency();
             }
 
-            HashSet<Integer> pageList = searchListWithPageId(sortedMap, siteId);
+            if ((double) countPage / totalPageCount <= 0.6) {
+                rareLemma.put(lemma, countPage);
+            }
+        }
+        lemmaList.clear();
+        Map<String, Integer> sortedMap = rareLemma.entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByValue())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
 
-            queryResponseList = creationListOfResponseDataItem(linkedLemma, pageList, map.keySet() );
-        } else queryResponseList = listOfLastQuery;
+
+        LinkedHashSet<String> linkedLemma = new LinkedHashSet<>(sortedMap.keySet());
+        int siteId = 0;
+
+        if (!site.isEmpty()) {
+            siteId = siteRepository.findByUrl(site).getId();
+        }
+
+        HashSet<Integer> pageList = searchListWithPageId(sortedMap, siteId);
+
+        queryResponseList = creationListOfResponseDataItem(linkedLemma, pageList, map.keySet());
 
         QueryResponse queryResponse = new QueryResponse();
         queryResponse.setResult(true);
         queryResponse.setCount(queryResponseList.size());
+
         LinkedHashSet<QueryResponseDataItems> listToData = new LinkedHashSet<>();
         int i = 0;
-
         for (QueryResponseDataItems dataItems : queryResponseList) {
             if (i >= offset && i < offset + limit) {
                 listToData.add(dataItems);
@@ -90,15 +79,9 @@ public class SearchService {
         }
         queryResponse.setData(listToData);
 
-        lastQuery = query;
-        listOfLastQuery = queryResponseList;
-        lastSite = site;
-
         return queryResponse;
 
     }
-
-
 
 
     public HashSet<Integer> searchListWithPageId(Map<String, Integer> sortLemma, int siteId) {
@@ -109,7 +92,7 @@ public class SearchService {
                 List<IndexTable> indexTableList = new ArrayList<>();
                 HashSet<Integer> secondPageList = new HashSet<>();
 
-                if (lemmas.equals(firstLemma)) {
+                if (firstPageList.isEmpty()) {
                     Lemma lemma = lemmaRepository.findByLemmaAndSiteId(lemmas, siteId);
                     if (lemma != null) {
                         indexTableList.addAll(indexRepository.findAllByLemmaId(lemma.getId()));
@@ -140,7 +123,8 @@ public class SearchService {
                 List<IndexTable> indexTableList = new ArrayList<>();
                 HashSet<Integer> secondPageList = new HashSet<>();
 
-                if (lemmas.equals(firstLemma)) {
+                if (firstPageList.isEmpty()) {
+
                     List<Lemma> lemmaList = lemmaRepository.findAllByLemma(lemmas);
                     if (!lemmaList.isEmpty()) {
                         for (Lemma lemma : lemmaList) {
@@ -179,9 +163,7 @@ public class SearchService {
     }
 
 
-
-
-    public LinkedHashSet<QueryResponseDataItems> creationListOfResponseDataItem(LinkedHashSet<String> sortLemma, HashSet<Integer> pageList, Set <String> allLemma) throws IOException {
+    public LinkedHashSet<QueryResponseDataItems> creationListOfResponseDataItem(LinkedHashSet<String> sortLemma, HashSet<Integer> pageList, Set<String> allLemma) throws IOException {
 
         HashMap<QueryResponseDataItems, Float> queryList = new HashMap<>();
         HashMap<String, String> mapWithTitleAndSnippet = new HashMap<>();
@@ -212,7 +194,10 @@ public class SearchService {
                 .collect(Collectors.toMap(
                         Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
 
-        sortedMap.entrySet().stream().findFirst().ifPresent(entry -> firstRelevance = entry.getValue());
+        Float firstRelevance = sortedMap.entrySet()
+                .stream()
+                .findFirst()
+                .get().getValue();
         LinkedHashSet<QueryResponseDataItems> resultList = new LinkedHashSet<>();
 
         for (QueryResponseDataItems response : sortedMap.keySet()) {
@@ -224,9 +209,7 @@ public class SearchService {
     }
 
 
-
-
-    public HashMap<String, String> createSnippet(Integer pageId, Set <String> allLemma) throws IOException {
+    public HashMap<String, String> createSnippet(Integer pageId, Set<String> allLemma) throws IOException {
 
         HashMap<String, String> map = new HashMap<>();
 
